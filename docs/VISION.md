@@ -1,5 +1,7 @@
 # MoE Deck Product Vision & Strategic Roadmap
 
+> Historical planning notes: this roadmap has not been kept in sync with the current implementation. See the main [README](../README.md) for current behavior and verification limits.
+
 > *"You shouldn't have to sit chained to a terminal window just to supervise autonomous agent swarms."*
 
 ---
