@@ -15,7 +15,7 @@ binary, one embedded cockpit UI, no external services.
 
 ```bash
 git clone https://github.com/olivermikkola/moedeck-community.git
-cd moedeck
+cd moedeck-community
 cargo build          # debug build for development
 cargo test           # must pass
 cargo clippy --all-targets -- -D warnings   # must be clean

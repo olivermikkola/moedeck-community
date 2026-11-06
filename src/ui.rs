@@ -1529,7 +1529,7 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
       safetyMode: 'standard',
       seenApprovalIds: new Set(),
       swarmSessions: [],
-      swarmTargetHarness: 'keel',
+      swarmTargetHarness: null,
       walkieTalkie: localStorage.getItem('helm_walkie') === 'true',
       audioChimes: localStorage.getItem('helm_chimes') !== 'false',
       offlineQueue: JSON.parse(localStorage.getItem('helm_offline_queue') || '[]'),
@@ -1697,6 +1697,35 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
       opencode: { accent: '#A855F7', soft: 'rgba(168, 85, 247, 0.16)', short: 'OpenCode' },
       keel: { accent: '#06B6D4', soft: 'rgba(6, 182, 212, 0.16)', short: 'Keel' }
     };
+    const HARNESS_ORDER = ['claude', 'codex', 'agy', 'opencode', 'keel'];
+
+    // Harnesses whose CLI is installed on the MoE Deck machine, so pickers
+    // never offer one that can only fail. Before the first bootstrap: all.
+    function installedHarnessIds() {
+      if (!state.harnesses.length) return HARNESS_ORDER;
+      const ids = state.harnesses.filter(h => h.available).map(h => h.id);
+      return HARNESS_ORDER.filter(id => ids.includes(id));
+    }
+
+    function swarmTarget() {
+      const ids = installedHarnessIds();
+      if (ids.includes(state.swarmTargetHarness)) return state.swarmTargetHarness;
+      return ids.find(id => id !== state.selectedHarness) || ids[0] || null;
+    }
+
+    // Drawer chips: installed harnesses plus any that already have chats.
+    function updateDrawerFilterChips() {
+      const ids = new Set(installedHarnessIds());
+      state.conversations.forEach(c => ids.add(c.harness));
+      document.querySelectorAll('#drawerFilters .filter-chip[data-filter]').forEach(btn => {
+        const id = btn.dataset.filter;
+        btn.hidden = id !== 'all' && !ids.has(id);
+      });
+      if (state.drawerFilter !== 'all' && !ids.has(state.drawerFilter)) {
+        state.drawerFilter = 'all';
+        document.querySelectorAll('#drawerFilters .filter-chip[data-filter]').forEach(b => b.classList.toggle('active', b.dataset.filter === 'all'));
+      }
+    }
 
     function shortEffort(ef) {
       if (ef === 'medium') return 'Med';
@@ -2096,18 +2125,10 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
               <span style="font-size:11px;color:var(--text-muted)">Cross-check across models</span>
             </div>
             <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:7px">
-              <button class="filter-chip" onclick="triggerSecondOpinion('codex', 'review-diff')">🔍 Codex Audit Diff</button>
-              <button class="filter-chip" onclick="triggerSecondOpinion('claude', 'review-diff')">🔍 Claude Audit Diff</button>
-              <button class="filter-chip" onclick="triggerSecondOpinion('agy', 'review-diff')">🔍 AGY Audit Diff</button>
-              <button class="filter-chip" onclick="triggerSecondOpinion('opencode', 'review-diff')">🔍 OpenCode Audit</button>
-              <button class="filter-chip" onclick="triggerSecondOpinion('keel', 'review-diff')">🔍 Keel Audit Diff</button>
+              ${installedHarnessIds().map(h => `<button class="filter-chip" onclick="triggerSecondOpinion('${h}', 'review-diff')">🔍 ${HARNESS_COLORS[h].short} Audit Diff</button>`).join('')}
             </div>
             <div style="display:flex;gap:6px;flex-wrap:wrap">
-              <button class="filter-chip" onclick="triggerSecondOpinion('codex', 'arena')">⚔️ Race Codex</button>
-              <button class="filter-chip" onclick="triggerSecondOpinion('claude', 'arena')">⚔️ Race Claude</button>
-              <button class="filter-chip" onclick="triggerSecondOpinion('agy', 'arena')">⚔️ Race AGY</button>
-              <button class="filter-chip" onclick="triggerSecondOpinion('opencode', 'arena')">⚔️ Race OpenCode</button>
-              <button class="filter-chip" onclick="triggerSecondOpinion('keel', 'arena')">⚔️ Race Keel</button>
+              ${installedHarnessIds().map(h => `<button class="filter-chip" onclick="triggerSecondOpinion('${h}', 'arena')">⚔️ Race ${HARNESS_COLORS[h].short}</button>`).join('')}
             </div>
           </div>
 
@@ -2121,8 +2142,8 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
               Distill current conversation tasks, goals &amp; relevant files into an isolated branch running a peer agent.
             </div>
             <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
-              ${['keel', 'opencode', 'claude', 'codex', 'agy'].map(h => {
-                const isSelected = (state.swarmTargetHarness || 'keel') === h;
+              ${installedHarnessIds().map(h => {
+                const isSelected = swarmTarget() === h;
                 const hc = HARNESS_COLORS[h] || HARNESS_COLORS.claude;
                 return `<button class="filter-chip ${isSelected ? 'active' : ''}" style="${isSelected ? `background:${hc.soft};border-color:${hc.accent};color:${hc.accent}` : ''}" onclick="setSwarmTarget('${h}')">${hc.short}</button>`;
               }).join('')}
@@ -2286,7 +2307,8 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
 
     window.triggerSwarmBounce = async function() {
       if (!state.activeId) return;
-      const harness = state.swarmTargetHarness || 'keel';
+      const harness = swarmTarget();
+      if (!harness) return;
       const instructions = document.getElementById('swarmInstructionsInput')?.value?.trim() || null;
       const res = await fetch(`/api/conversations/${encodeURIComponent(state.activeId)}/bounce`, {
         method: 'POST',
@@ -2624,6 +2646,7 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
 
     function renderDrawerList() {
       if (deferRender(renderDrawerList)) return;
+      updateDrawerFilterChips();
       const container = document.getElementById('convList');
       const keptScroll = container.scrollTop;
       const q = (state.drawerSearch || '').toLowerCase().trim();
@@ -3349,7 +3372,7 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
         <section class="settings-section">
           <div class="settings-section-heading"><h2>Harnesses & accounts</h2><button class="filter-chip" onclick="showAddHarness()">＋ Add harness</button></div>
           <p class="settings-help">Choose the agents available in your composer. Manage their accounts and models here.</p>
-          <div class="settings-group">${settingsData.harnesses.filter(h => settingsData.settings.harnesses[h.id]?.enabled !== false).map(h => `
+          <div class="settings-group">${settingsData.harnesses.filter(h => settingsData.settings.harnesses[h.id]?.enabled ?? h.available).map(h => `
             <button class="settings-row" onclick="openHarnessSettings('${escapeAttr(h.id)}')">
               <span class="bounce-dot" style="background:${h.accent}"></span><span class="settings-row-label">${escapeHtml(h.name)}<small>${h.available ? 'Installed' : 'Not installed'} · ${h.models.length>1 ? `${h.models.length-1} model choices` : 'Configured default'}</small></span><span aria-hidden="true">›</span>
             </button>`).join('') || '<p class="settings-help">No harnesses enabled. Add one to get started.</p>'}</div>
@@ -3378,7 +3401,7 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
     window.openHarnessSettings = function(id) {
       const h = settingsData.harnesses.find(h=>h.id===id);
       if (!h) return;
-      const config = settingsData.settings.harnesses[id] || {enabled:true, models:[]};
+      const config = settingsData.settings.harnesses[id] || {enabled:!!h?.available, models:[]};
       const catalog = settingsData.catalogs[id];
       settingsHarnessId = id;
       const source = id==='claude' ? 'Stable CLI aliases · version selected by Claude' : id==='codex' ? 'Codex local catalog · primary account' : id==='keel' ? 'Local & OpenAI-compatible providers · built-in local models plus your own endpoints' : catalog?.updated_at ? `Native catalog · ${new Date(catalog.updated_at).toLocaleString()}` : 'Configured default · no discovered catalog';
@@ -4454,11 +4477,7 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
         <div style="display:flex;gap:6px;margin-bottom:8px">
           <input id="sprintTitleInput" placeholder="Sprint title (e.g. Refactor shadow VFS)..." style="flex:1;background:#191917;border:1px solid var(--border-strong);border-radius:9px;padding:6px 9px;color:var(--text);font-size:12.5px" />
           <select id="sprintHarnessSelect" style="background:#191917;border:1px solid var(--border-strong);border-radius:9px;padding:6px 9px;color:var(--text);font-size:12px">
-            <option value="keel">Keel</option>
-            <option value="claude" selected>Claude</option>
-            <option value="opencode">OpenCode</option>
-            <option value="codex">Codex</option>
-            <option value="agy">AGY</option>
+            ${installedHarnessIds().map(h => `<option value="${h}" ${h === 'claude' ? 'selected' : ''}>${HARNESS_COLORS[h].short}</option>`).join('')}
           </select>
         </div>
         <textarea id="sprintChecklistInput" placeholder="- [ ] Step 1: Write trait definitions&#10;- [ ] Step 2: Implement core logic&#10;- [ ] Step 3: Run cargo test and fix errors&#10;- [ ] Step 4: Verify formatting" style="width:100%;height:110px;background:#141412;border:1px solid var(--border-strong);border-radius:9px;padding:8px;font-family:ui-monospace,monospace;font-size:11.5px;color:var(--text);margin-bottom:8px" oninput="previewSprintSteps()"></textarea>

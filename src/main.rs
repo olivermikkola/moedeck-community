@@ -208,12 +208,6 @@ async fn main() -> anyhow::Result<()> {
     let auth_cfg = auth::load_auth_config();
     let startup_token = auth::issue_session_token(&auth_cfg);
     write_tui_token(&startup_token);
-    let effective_pc = auth::effective_passcode(&auth_cfg).unwrap_or_else(|| "none".to_string());
-    let pair_host = detect_tailscale_host()
-        .or_else(detect_lan_ip)
-        .unwrap_or_else(|| "127.0.0.1".to_string());
-    let pair_url = format!("http://{}:{}/?token={}", pair_host, port, startup_token);
-
     println!("====================================================");
     println!(
         "  MoE Deck — Multi-Harness Agent Gateway (v{})",
@@ -221,9 +215,21 @@ async fn main() -> anyhow::Result<()> {
     );
     println!("  Local Cockpit:  http://127.0.0.1:{}", port);
     println!("  Terminal TUI:   moedeck tui");
-    println!("  Mobile Pairing: {}", pair_url);
-    println!("  Passcode:       {}", effective_pc);
-    println!("  Harnesses:      Claude Code | Antigravity | Codex | OpenCode | Keel");
+    // This output ends up in service logs, so no passcode or login link here.
+    println!("  Mobile Pairing: run `moedeck pair` for the link and passcode");
+    let installed: Vec<String> = default_harnesses()
+        .into_iter()
+        .filter(|h| h.available)
+        .map(|h| h.name)
+        .collect();
+    println!(
+        "  Harnesses:      {}",
+        if installed.is_empty() {
+            "none installed yet (claude, codex, agy, opencode or keel)".to_string()
+        } else {
+            installed.join(" | ")
+        }
+    );
     let account_summary = profiles::registry_summary();
     if account_summary != "none" {
         println!("  Extra accounts: {}", account_summary);
@@ -747,7 +753,8 @@ async fn handle_request(
                         .harnesses
                         .get(&h.id)
                         .map(|c| c.enabled)
-                        .unwrap_or(true)
+                        // Unconfigured: offer it only if its CLI is installed.
+                        .unwrap_or(h.available)
                 })
                 .collect();
             let mut conversations = match blocking("bootstrap discovery", move || {
