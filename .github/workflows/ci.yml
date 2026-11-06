@@ -1,0 +1,86 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check:
+    name: Build, Lint & Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+          targets: aarch64-apple-darwin
+
+      - name: Cache Cargo registry and build artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Run Clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      # Type-check the macOS build here (no Mac or linker needed): a Linux-only
+      # libc signature once broke it unnoticed until a release.
+      - name: Check macOS build
+        run: cargo check --locked --target aarch64-apple-darwin
+
+      - name: Run unit and integration tests
+        run: cargo test --verbose
+
+      - name: Build release binary
+        run: cargo build --release --locked
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install browser test tools
+        timeout-minutes: 10
+        working-directory: tests/browser
+        run: |
+          npm ci
+          # The Azure mirror can throttle these large WebKit dependencies
+          # enough to exhaust the step's ten-minute limit.
+          if [ -f /etc/apt/apt-mirrors.txt ]; then
+            sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/apt-mirrors.txt
+          fi
+          npx playwright install --with-deps chromium webkit
+
+      - name: Exercise phone controls against the gateway
+        working-directory: tests/browser
+        env:
+          MOEDECK_BIN: ${{ github.workspace }}/target/release/moedeck
+        run: npm test
+
+      - name: Upload phone screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phone-browser-proof
+          path: tests/browser/artifacts/
+
+      - name: Upload verified Linux binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: moedeck-linux
+          path: target/release/moedeck
