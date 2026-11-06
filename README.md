@@ -142,6 +142,7 @@ On Linux, `loginctl enable-linger $USER` keeps MoE Deck running after you log ou
    - Switch between **Claude Code**, **Antigravity (`agy`)**, **Codex**, and **OpenCode** via the bottom Harness Pill—even mid-thread, with automatic conversation context handoff.
    - Select harness-specific models (`Opus 5.5`, `Sonnet 4.5`, `Gemini 4 Argon`, `GPT-5.6 Sol`, `Kimi K3.1 Pro`, `GLM 5.3 Flash`, `MiMo v2.6 Pro`, `DeepSeek V4 Flash`) and reasoning effort (`Low`, `Medium`, `High`, `XHigh`, `Max`).
 2. **Instant Thread Bouncing, Search & Visual Identity:**
+   - **At a glance:** The drawer filters conversations into **Needs you** (native approvals), **Updated** (unseen changes), and **Working**. A menu badge highlights approvals and unseen updates; each row shows its project and latest preview. Read state stays in this browser, survives reopening, and clears only when the latest messages are visible. Existing history starts quiet on first use.
    - Multiplex panes: each conversation is a terminal-style pane. Wide screens tile them (click to focus, `⤢`/Alt+Z to zoom, drag a pane title to swap, Alt+0–9 to jump); phones show one pane and swipe sideways between them. An optional tmux-style window bar (off by default; turn it on in the drawer's **Quick settings**) lists the panes.
    - 1-Tap Quick-Flip pill in the top-right header returns to the previous conversation.
    - Slide-out drawer with instant keyword search across titles, projects, and previews + harness filter chips (`All`, `Claude`, `AGY`, `Codex`, `OpenCode`).

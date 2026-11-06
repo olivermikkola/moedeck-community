@@ -221,6 +221,14 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
     .circle-btn:active {
       transform: scale(0.93);
     }
+    #openDrawerBtn { position: relative; }
+    .deck-badge {
+      position: absolute; top: -3px; right: -4px; min-width: 19px;
+      padding: 2px 5px; border: 2px solid #0d0d0d; border-radius: 99px;
+      background: #8eb8ef; color: #101011; font-size: 10px; font-weight: 750;
+    }
+    .deck-badge[hidden] { display: none; }
+    .deck-badge.needs { background: #f0b478; }
 
     .header-title-wrap {
       border: 0;
@@ -976,6 +984,7 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
       align-items: center;
       gap: 8px;
       letter-spacing: -.04em;
+      white-space: nowrap;
     }
     .new-thread-btn {
       background: var(--text);
@@ -986,6 +995,7 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
       font-size: 12.5px;
       font-weight: 650;
       cursor: pointer;
+      white-space: nowrap;
     }
 
     .drawer-filters {
@@ -993,6 +1003,33 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
       gap: 6px;
       padding: 10px 14px;
       overflow-x: auto;
+    }
+    .drawer-overview { padding: 0 14px 6px; }
+    .drawer-overview-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+    .drawer-overview-top span { color: var(--text-muted); font-size: 12px; }
+    .deck-all { background: none; border: 0; color: var(--text-muted); font-size: 12px; min-height: 32px; cursor: pointer; }
+    .deck-all[aria-pressed="true"] { color: var(--text); }
+    .deck-views { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+    .deck-view {
+      display: flex; flex-direction: column; align-items: flex-start; gap: 5px;
+      padding: 11px 10px; border: 1px solid var(--border); border-radius: 12px;
+      background: #19191b; color: var(--text-muted); font-size: 11px; cursor: pointer;
+    }
+    .deck-view strong { color: var(--text); font-size: 21px; font-weight: 600; line-height: 1; }
+    .deck-view[aria-pressed="true"] { border-color: #858580; background: #252526; }
+    .deck-view[data-view="needs"] strong, .conv-activity.needs { color: #f0b478; }
+    .deck-view[data-view="updated"] strong, .conv-activity.updated { color: #8eb8ef; }
+    .deck-view[data-view="working"] strong, .conv-activity.working { color: #b3c59b; }
+    .conv-item-meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 11px; color: var(--text-muted); }
+    .conv-project { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .conv-activity { flex-shrink: 0; font-weight: 600; }
+    .drawer-empty { padding: 30px 14px; color: var(--text-muted); font-size: 12px; line-height: 1.6; }
+    .drawer-empty strong { display: block; color: var(--text); font-size: 14px; margin-bottom: 6px; }
+    .drawer-empty button { margin-top: 12px; min-height: 40px; }
+    @media (max-height: 600px) {
+      .drawer { overflow-y: auto; }
+      .drawer > * { flex-shrink: 0; }
+      .drawer .conv-list { flex: none; overflow: visible; }
     }
     .filter-chip {
       padding: 4px 10px;
@@ -1043,6 +1080,10 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+    }
+    .conv-item-engine { display: flex; align-items: center; gap: 5px; flex-shrink: 0; }
+    @media (max-width: 374px) {
+      .drawer #notifyBtn { display: none; }
     }
     .conv-item-preview {
       font-size: 12px;
@@ -1211,6 +1252,7 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
     <header class="top-header" id="topHeader">
       <button class="circle-btn" id="openDrawerBtn" aria-label="Menu" title="Open thread drawer">
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="16" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>
+        <span class="deck-badge" id="deckBadge" aria-hidden="true" hidden></span>
       </button>
 
       <button class="header-title-wrap" id="headerTitleWrap" type="button" aria-label="Choose project">
@@ -1387,6 +1429,17 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
         <button class="new-thread-btn" id="newThreadBtn">+ New</button>
       </div>
     </div>
+    <section class="drawer-overview" aria-label="Conversation activity">
+      <div class="drawer-overview-top">
+        <span>At a glance</span>
+        <button class="deck-all" data-view="all" aria-pressed="true" onclick="setDrawerView('all')">All threads</button>
+      </div>
+      <div class="deck-views">
+        <button class="deck-view" data-view="needs" aria-pressed="false" onclick="setDrawerView('needs')"><strong>0</strong>Needs you</button>
+        <button class="deck-view" data-view="updated" aria-pressed="false" onclick="setDrawerView('updated')"><strong>0</strong>Updated</button>
+        <button class="deck-view" data-view="working" aria-pressed="false" onclick="setDrawerView('working')"><strong>0</strong>Working</button>
+      </div>
+    </section>
     <div style="padding:10px 12px 2px 12px">
       <input
         id="drawerSearchInput"
@@ -1514,7 +1567,10 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
       selectedProfile: null,
       profiles: [],
       drawerFilter: 'all',
+      drawerView: 'all',
       drawerSearch: '',
+      seenConversations: readSeenConversations(),
+      renderedSummary: null,
       queuedImages: [],
       drafts: new Map(),
       expandedTools: new Set(),
@@ -1876,6 +1932,11 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
         state.prevBusyIds = new Set(newConvs.filter(c => c.status === 'busy').map(c => c.id));
         state.bootstrappedOnce = true;
         state.conversations = newConvs;
+        // First use starts with a quiet deck, rather than flagging the entire archive.
+        if (state.seenConversations === null) {
+          state.seenConversations = new Map(newConvs.map(c => [c.id, conversationRevision(c)]));
+          saveSeenConversations();
+        }
         state.archived = new Set(data.archived || []);
         syncPanes(newConvs.filter(c => !state.archived.has(c.id)));
         if (!localStorage.getItem('helm_last_workdir') && data.home) {
@@ -2644,6 +2705,67 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
     // updated_at is seconds for some harnesses and milliseconds for others.
     const convTime = c => { const t = Number(c?.updated_at) || 0; return t < 1e12 ? t * 1000 : t; };
 
+    // Include the preview and run state: native timestamps may only have second precision.
+    function conversationRevision(c) {
+      return JSON.stringify([convTime(c), c.status || 'idle', c.last_preview || '']);
+    }
+    function readSeenConversations() {
+      try {
+        const entries = JSON.parse(localStorage.getItem('moedeck_seen_conversations_v1'));
+        if (!Array.isArray(entries)) return null;
+        return new Map(entries.filter(e => Array.isArray(e) && e.length === 2 && e.every(v => typeof v === 'string')));
+      } catch { return null; }
+    }
+    function saveSeenConversations() {
+      try { localStorage.setItem('moedeck_seen_conversations_v1', JSON.stringify([...state.seenConversations])); } catch {}
+    }
+    function conversationActivity(c) {
+      if (c.pending_approval || state.pendingApprovals.some(a => a.conversation_id === c.id)) return 'needs';
+      if (c.status === 'busy') return 'working';
+      if (state.seenConversations && state.seenConversations.get(c.id) !== conversationRevision(c)) return 'updated';
+      return '';
+    }
+    function markConversationSeen() {
+      const c = state.renderedSummary, el = document.getElementById('chatScroll');
+      if (!c || c.id !== state.activeId || document.hidden || !state.seenConversations
+        || document.getElementById('backdrop').classList.contains('open')
+        || document.getElementById('loginOverlay') || !el?.clientHeight
+        || el.scrollHeight - el.scrollTop - el.clientHeight >= 140) return;
+      const revision = conversationRevision(c);
+      if (state.seenConversations.get(c.id) === revision) return;
+      // Another tab may have read a different conversation since our last poll.
+      state.seenConversations = readSeenConversations() || state.seenConversations;
+      state.seenConversations.set(c.id, revision);
+      saveSeenConversations();
+      renderDrawerList();
+    }
+    document.getElementById('chatScroll').addEventListener('scroll', markConversationSeen, { passive: true });
+    window.addEventListener('storage', e => {
+      if (e.key !== 'moedeck_seen_conversations_v1') return;
+      state.seenConversations = readSeenConversations();
+      renderDrawerList();
+    });
+    window.setDrawerView = function(view) {
+      state.drawerView = view;
+      state.showArchived = false;
+      renderDrawerList();
+      document.getElementById('convList').scrollTop = 0;
+    };
+    window.clearDrawerFilters = function() {
+      state.drawerView = 'all';
+      state.drawerFilter = 'all';
+      state.drawerSearch = '';
+      document.getElementById('drawerSearchInput').value = '';
+      document.querySelectorAll('#drawerFilters [data-filter]').forEach(b => b.classList.toggle('active', b.dataset.filter === 'all'));
+      renderDrawerList();
+    };
+    function conversationAge(c) {
+      if (!convTime(c)) return '';
+      const minutes = Math.max(0, Math.floor((Date.now() - convTime(c)) / 60000));
+      return minutes < 1 ? 'now' : minutes < 60 ? `${minutes}m ago`
+        : minutes < 1440 ? `${Math.floor(minutes / 60)}h ago` : `${Math.floor(minutes / 1440)}d ago`;
+    }
+
     function renderDrawerList() {
       if (deferRender(renderDrawerList)) return;
       updateDrawerFilterChips();
@@ -2653,29 +2775,58 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
       // Newest first; a pin only marks a chat, so old pins don't bury today's work.
       const archivedCount = state.conversations.filter(c => state.archived.has(c.id)).length;
       if (!archivedCount) state.showArchived = false;
-      document.getElementById('convListHeading').textContent = state.showArchived ? 'Archived' : 'Conversations';
+      const labels = { needs: 'Needs you', updated: 'Updated', working: 'Working' };
+      document.getElementById('convListHeading').textContent = state.showArchived ? 'Archived' : labels[state.drawerView] || 'Conversations';
       const archivedToggle = state.showArchived
         ? `<button class="drawer-archived-toggle" onclick="toggleArchivedView()">← Back to chats</button>`
         : archivedCount ? `<button class="drawer-archived-toggle" onclick="toggleArchivedView()">Archived (${archivedCount})</button>` : '';
-      const filtered = state.conversations.slice().sort((a, b) => convTime(b) - convTime(a)).filter(c => {
-        if (state.archived.has(c.id) !== state.showArchived) return false;
+      const matching = state.conversations.filter(c => {
         if (state.drawerFilter !== 'all' && c.harness !== state.drawerFilter) return false;
         if (!q) return true;
         return (
           (c.title || '').toLowerCase().includes(q) ||
           (c.subtitle || '').toLowerCase().includes(q) ||
+          (c.workdir || '').toLowerCase().includes(q) ||
           (c.last_preview || '').toLowerCase().includes(q) ||
           (c.profile_label || '').toLowerCase().includes(q) ||
           (c.harness || '').toLowerCase().includes(q)
         );
       });
+      const counts = { needs: 0, updated: 0, working: 0 };
+      matching.filter(c => !state.archived.has(c.id)).forEach(c => {
+        const activity = conversationActivity(c);
+        if (activity) counts[activity]++;
+      });
+      document.querySelectorAll('.drawer-overview [data-view]').forEach(button => {
+        const view = button.dataset.view;
+        button.setAttribute('aria-pressed', String(!state.showArchived && state.drawerView === view));
+        if (view !== 'all') button.querySelector('strong').textContent = counts[view];
+      });
+      const allActive = state.conversations.filter(c => !state.archived.has(c.id));
+      const needs = allActive.filter(c => conversationActivity(c) === 'needs').length;
+      const updated = allActive.filter(c => conversationActivity(c) === 'updated').length;
+      const badge = document.getElementById('deckBadge');
+      badge.hidden = needs + updated === 0;
+      badge.textContent = needs + updated > 99 ? '99+' : needs + updated;
+      badge.classList.toggle('needs', needs > 0);
+      document.getElementById('openDrawerBtn').title = needs + updated
+        ? `${needs} need you · ${updated} updated` : 'Open thread drawer';
+      document.getElementById('openDrawerBtn').setAttribute('aria-description', needs + updated
+        ? `${needs} need you, ${updated} updated conversations` : 'All caught up');
+      const filtered = matching.filter(c => state.archived.has(c.id) === state.showArchived
+        && (state.showArchived || state.drawerView === 'all' || conversationActivity(c) === state.drawerView))
+        .sort((a, b) => convTime(b) - convTime(a));
       if (filtered.length === 0) {
+        const emptyDeck = state.conversations.length === 0;
+        const title = emptyDeck ? 'No conversations yet' : q || state.drawerFilter !== 'all'
+          ? 'No matching conversations' : { needs: 'Nothing needs your approval', updated: 'You’re caught up', working: 'No agents working' }[state.drawerView] || 'No conversations here';
+        const hint = emptyDeck ? 'Start a thread or run your agent CLI in the terminal.'
+          : state.drawerView === 'updated' && !q && state.drawerFilter === 'all' ? 'New changes will appear here after you’ve read a conversation on this device.'
+          : 'Choose another view or show all threads.';
         replaceChangedHtml(container, `
-          <div style="padding:40px 18px;text-align:center;color:var(--text-muted)">
-            <div style="font-size:32px;margin-bottom:8px">💬</div>
-            <div style="font-weight:700;font-size:14px;color:var(--text);margin-bottom:4px">No conversations yet</div>
-            <div style="font-size:12px;line-height:1.5;margin-bottom:14px">Start your first thread or run your agent CLI in the terminal.</div>
-            <button class="new-thread-btn" onclick="document.getElementById('newThreadBtn').click()" style="display:inline-block">+ Start Thread</button>
+          <div class="drawer-empty">
+            <strong>${title}</strong>${hint}
+            <br><button class="new-thread-btn" onclick="${emptyDeck ? "document.getElementById('newThreadBtn').click()" : 'clearDrawerFilters()'}">${emptyDeck ? '+ Start thread' : 'Show all threads'}</button>
           </div>
         ` + archivedToggle);
         return;
@@ -2683,7 +2834,10 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
       replaceChangedHtml(container, filtered.map(c => {
         const hc = HARNESS_COLORS[c.harness] || HARNESS_COLORS.claude;
         const isActive = c.id === state.activeId;
-        const hasApproval = Boolean(c.pending_approval);
+        const activity = conversationActivity(c);
+        const hasApproval = activity === 'needs';
+        const approval = c.pending_approval || state.pendingApprovals.find(a => a.conversation_id === c.id);
+        const project = String(c.workdir || '').split('/').filter(Boolean).pop() || c.subtitle || '';
         return `
           <div class="conv-item ${isActive ? 'active' : ''}" data-conv-id="${escapeAttr(c.id)}" onclick="selectConvFromDrawer('${escapeAttr(c.id)}')">
             <div class="conv-item-top">
@@ -2691,13 +2845,16 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
                 <span class="bounce-dot ${(c.status === 'busy' || hasApproval) ? 'busy' : ''}" style="background:${hasApproval ? '#ef4444' : hc.accent}"></span>
                 <span class="conv-item-title">${c.pinned ? '<span aria-label="Pinned">📌</span> ' : ''}${escapeHtml(c.title)}</span>
               </div>
-              <div style="display:flex;align-items:center;gap:5px">
-                ${hasApproval ? `<span style="background:#ef4444;color:#fff;border-radius:6px;padding:1px 5px;font-size:9px;font-weight:750">⚠️ APPR</span>` : ''}
+              <div class="conv-item-engine">
                 ${c.profile_label ? `<span style="background:${hc.accent_soft};color:${hc.accent};border-radius:6px;padding:1px 5px;font-size:9px;font-weight:750">#${escapeHtml((String(c.profile_label).match(/\d+/) || ['?'])[0])}</span>` : ''}
                 <span class="harness-tag-mini" style="color:${hc.accent}">${hc.short}</span>
               </div>
             </div>
-            <div class="conv-item-preview">${hasApproval ? `⚠️ Awaiting security approval for tool` : escapeHtml(c.last_preview || c.subtitle)}</div>
+            <div class="conv-item-meta">
+              <span class="conv-project" title="${escapeAttr(c.workdir || '')}">${escapeHtml(project)}${project && conversationAge(c) ? ' · ' : ''}${conversationAge(c)}</span>
+              ${activity ? `<span class="conv-activity ${activity}">${labels[activity]}</span>` : ''}
+            </div>
+            <div class="conv-item-preview">${escapeHtml(hasApproval ? `${approval.tool_name}: ${approval.target}` : c.last_preview || c.subtitle)}</div>
           </div>
         `;
       }).join('') + archivedToggle);
@@ -2771,6 +2928,8 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
       const truncated = (state.detail && state.detail.truncated) || 0;
       const tailText = messages.length ? JSON.stringify(messages[messages.length - 1]) : '';
       if (!forceScrollBottom && state.lastRenderedId === state.activeId && messages.length === state.lastMessageCount && tailText === state.lastTailText && truncated === state.lastTruncated) {
+        state.renderedSummary = state.detail?.summary || null;
+        markConversationSeen();
         return;
       }
       state.lastMessageCount = messages.length;
@@ -2834,6 +2993,8 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
       if (forceScrollBottom || wasNearBottom) {
         scrollEl.scrollTop = scrollEl.scrollHeight;
       }
+      state.renderedSummary = state.detail?.summary || null;
+      markConversationSeen();
     }
 
     // Legacy readers fill only text/thinking/tools; draw them as the same
@@ -3880,6 +4041,7 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
     });
 
     document.getElementById('openDrawerBtn').addEventListener('click', () => {
+      renderDrawerList();
       document.getElementById('drawer').classList.add('open');
       document.getElementById('backdrop').classList.add('open');
     });
@@ -3906,6 +4068,7 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
       document.getElementById('drawer').classList.remove('open');
       document.getElementById('bottomSheet').classList.remove('open');
       document.getElementById('backdrop').classList.remove('open');
+      requestAnimationFrame(markConversationSeen);
     }
     document.getElementById('backdrop').addEventListener('click', closeOverlays);
     document.addEventListener('keydown', e => {
