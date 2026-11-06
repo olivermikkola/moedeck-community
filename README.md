@@ -17,7 +17,22 @@ Switch between agent conversations, create a Git worktree for a task, respond to
 - **[Vision (`VISION.md`)](VISION.md):** Why MoE Deck exists, the "One Captain, Multi-Harness" philosophy, and why terminal-on-a-phone wrappers fail.
 - **[Architecture (`ARCHITECTURE.md`)](ARCHITECTURE.md):** Lock-free JSONL/SQLite tailing, bounded seek parsing for 100 MB+ agent logs, cross-harness context handoff, and security boundaries.
 
-## Quickstart
+## Download
+
+Ready-made builds for Linux (x86-64) and macOS (Apple silicon) are on the
+[releases page](https://github.com/olivermikkola/moedeck-community/releases), with SHA-256 checksums.
+More at [moesystems.com/agent-management](https://moesystems.com/agent-management/).
+
+```bash
+tar xzf moedeck-*.tar.gz
+cd moedeck-*/
+./moedeck install      # runs it in the background and prints the pairing link + passcode
+```
+
+On a Mac, run `xattr -d com.apple.quarantine moedeck` before `./moedeck install`:
+the alpha isn't signed by Apple yet.
+
+## Quickstart (build from source)
 
 Requirements: a Rust toolchain (stable via [rustup](https://rustup.rs)) on Linux or macOS. The harness CLIs (`claude`, `codex`, `opencode`, …) are only needed if you want MoE Deck to actually *drive* them—MoE Deck still discovers and renders their existing sessions without them.
 
