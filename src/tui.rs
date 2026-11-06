@@ -436,14 +436,15 @@ impl App {
     }
 
     fn cycle_harness_filter(&mut self) {
-        let filters = [
-            None,
-            Some("claude"),
-            Some("agy"),
-            Some("codex"),
-            Some("opencode"),
-            Some("keel"),
-        ];
+        // Offered harnesses plus any that already have threads.
+        let mut filters: Vec<Option<&str>> = vec![None];
+        for id in ["claude", "agy", "codex", "opencode", "keel"] {
+            if self.harnesses.iter().any(|h| h.id == id)
+                || self.conversations.iter().any(|c| c.harness == id)
+            {
+                filters.push(Some(id));
+            }
+        }
         let current = filters
             .iter()
             .position(|filter| *filter == self.harness_filter.as_deref())

@@ -10,13 +10,12 @@
   <img alt="Rust" src="https://img.shields.io/badge/built%20with-Rust%20stable-DEA584?logo=rust">
 </p>
 
-**MoE Deck** is a single-binary Rust daemon gateway for steering multiple local AI coding harnesses—**Claude Code (`claude`)**, **Antigravity (`agy`)**, **Codex (`codex`)**, **OpenCode (`opencode`)**, and **Keel (`keel`)**—from one cockpit, on your phone, desktop, or terminal (`moedeck tui`). Keel is not publicly released yet; the other four use their public CLIs.
+**MoE Deck** is a single-binary Rust daemon gateway for steering multiple local AI coding harnesses—**Claude Code (`claude`)**, **Antigravity (`agy`)**, **Codex (`codex`)**, **OpenCode (`opencode`)**, and **Keel (`keel`)**—from one cockpit, on your phone, desktop, or terminal (`moedeck tui`). Keel is not publicly released yet; the other four use their public CLIs. MoE Deck only offers the harnesses whose CLI is installed on the machine (Settings can turn one on or off).
 
 Switch between agent conversations, create a Git worktree for a task, respond to supported native approval requests, or hand context to a different harness. A Git worktree separates working files and branches; it is not a security sandbox.
 
 - **[Vision (`VISION.md`)](VISION.md):** Why MoE Deck exists, the "One Captain, Multi-Harness" philosophy, and why terminal-on-a-phone wrappers fail.
 - **[Architecture (`ARCHITECTURE.md`)](ARCHITECTURE.md):** Lock-free JSONL/SQLite tailing, bounded seek parsing for 100 MB+ agent logs, cross-harness context handoff, and security boundaries.
-- **[Competitive Landscape (`COMPETITIVE_LANDSCAPE.md`)](COMPETITIVE_LANDSCAPE.md):** How MoE Deck compares to Claude Code Remote Control (`claude.ai/code`), Cursor Background Agents, Devin 2.0, OpenAI Codex Web, AionUi, and OpenCode Manager.
 
 ## Quickstart
 
@@ -128,7 +127,7 @@ On Linux, `loginctl enable-linger $USER` keeps MoE Deck running after you log ou
    - Switch between **Claude Code**, **Antigravity (`agy`)**, **Codex**, and **OpenCode** via the bottom Harness Pill—even mid-thread, with automatic conversation context handoff.
    - Select harness-specific models (`Opus 5.5`, `Sonnet 4.5`, `Gemini 4 Argon`, `GPT-5.6 Sol`, `Kimi K3.1 Pro`, `GLM 5.3 Flash`, `MiMo v2.6 Pro`, `DeepSeek V4 Flash`) and reasoning effort (`Low`, `Medium`, `High`, `XHigh`, `Max`).
 2. **Instant Thread Bouncing, Search & Visual Identity:**
-   - Multiplex panes: each conversation is a terminal-style pane. Wide screens tile them (click to focus, `⤢`/Alt+Z to zoom, drag a pane title to swap, Alt+0–9 to jump); phones show one pane and swipe sideways between them. A tmux-style bar lists the windows and opens Quick settings (`⚙`).
+   - Multiplex panes: each conversation is a terminal-style pane. Wide screens tile them (click to focus, `⤢`/Alt+Z to zoom, drag a pane title to swap, Alt+0–9 to jump); phones show one pane and swipe sideways between them. An optional tmux-style window bar (off by default; turn it on in the drawer's **Quick settings**) lists the panes.
    - 1-Tap Quick-Flip pill in the top-right header returns to the previous conversation.
    - Slide-out drawer with instant keyword search across titles, projects, and previews + harness filter chips (`All`, `Claude`, `AGY`, `Codex`, `OpenCode`).
    - Signature harness accents:
