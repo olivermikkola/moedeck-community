@@ -194,7 +194,7 @@ API: `GET /api/profiles`, `POST /api/profiles {harness}` (creates the next `agy-
    - Collapses intermediate tool calls (`⚡ N steps`) and reasoning chains (`💭 Thought process`) into clean expandable accordions.
    - Surfaces local images/renders inspected by agents (`/tmp/...png`, before/after postcards) as zoomable inline image cards, plus mobile camera/screenshot upload via `+`.
 7. **Interactive Remote Push Approvals & HITL Security Protocol (`/api/approvals`):**
-   - **Native Approval Requests:** Keel's blocking approval protocol forwards decisions before execution. Other adapters rely on their native permission and sandbox policies; tool progress alone is not an approval request.
+   - **Native Approval Requests:** Supported Keel and Codex native requests are forwarded before execution. Other adapters rely on their native permission and sandbox policies; tool progress alone is not an approval request.
    - **Thumb-Friendly Mobile Action Card:** A glowing, risk-colored mobile card appears with the exact tool and target command, offering 1-tap **✓ Allow Once**, **🛡️ Always** (session whitelist), and **✕ Deny** buttons.
    - **Bi-Directional Stdin Pipe:** Carries Keel's native decisions, Codex app-server JSON-RPC (including approvals) and supported legacy terminal prompts. OpenCode receives closed stdin.
    - **Configurable Safety Modes:** Switch between **🛡️ Safe**, **⚡ Standard**, and **🚀 Yolo**. Safe applies read-only restrictions in Codex, Keel and OpenCode; Claude and Antigravity retain their native permission behavior.
@@ -204,8 +204,9 @@ API: `GET /api/profiles`, `POST /api/profiles {harness}` (creates the next `agy-
    - **Git Worktrees:** Creates a separate worktree branch (`swarm/<harness>-<short_id>`) for each task. Agents retain the filesystem and network permissions granted by their harness.
    - **Peer Harness Execution:** Instantly launches the handoff envelope into Keel, OpenCode, Claude, Codex, or AGY with custom instructions.
    - **In-Cockpit Worktree Lifecycle:** Inspect branch diffs in real-time, execute a 1-tap fast-forward merge back to base (`POST /api/swarm/:id/merge`), or cleanly discard failed explorations.
-9. **📱 In-Cockpit Reverse-Proxy & Secure Mobile Sandbox Previews:**
+9. **📱 In-Cockpit Reverse-Proxy Previews:**
    - **Zero-Port Tunneling (`/preview/:port/`):** Proxies any local development server (Vite, Next.js, Express, SvelteKit, FastAPI) through MoE Deck's single port over Tailscale, Wi-Fi, or local network. No separate ports, firewalls, or DNS configuration needed.
+   - **Preview trust:** Previewed HTML runs on the MoE Deck origin. Only open content you trust; a worktree or preview does not isolate untrusted code. See [SECURITY.md](SECURITY.md).
    - **Autonomous Asset & Redirect Rewriting:** Dynamically injects `<base href="/preview/:port/">` into HTML documents, rewrites HTTP `Location` redirects, and intercepts Referer-based absolute asset requests (`/@vite/client`, `/src/main.tsx`).
    - **Responsive Device Simulator:** Cockpit modal with iPhone 16 Pro (Dynamic Island skin), iPad mini, and desktop viewports with 1-tap orientation flipping.
    - **Client Console Telemetry:** Automatically captures and streams `console.log`, `console.warn`, and `console.error` from the iframe back to the cockpit.
