@@ -47,6 +47,20 @@ fn source_dir() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")))
 }
 
+/// Downloaded release binaries point at the CI machine's checkout, which does
+/// not exist here; say where new versions come from instead of a git error.
+fn require_checkout(src: &Path) -> Result<(), String> {
+    if src.join(".git").exists() {
+        Ok(())
+    } else {
+        Err(format!(
+            "This copy was installed from a download, so it can't update itself yet. \
+             Get the newest version at {}/releases",
+            env!("CARGO_PKG_REPOSITORY")
+        ))
+    }
+}
+
 fn work_dir() -> PathBuf {
     crate::discovery::config_dir().join("update")
 }
@@ -82,6 +96,7 @@ pub struct Check {
 
 pub async fn check() -> Result<Check, String> {
     let src = source_dir();
+    require_checkout(&src)?;
     git(&src, &["fetch", "--quiet", "origin", "main"]).await?;
     let latest = git(&src, &["rev-parse", "origin/main"]).await?;
     // Same content counts as current, so a squash merge of the running
@@ -116,6 +131,7 @@ pub async fn check() -> Result<Check, String> {
 /// Start an update in the background. A second request while one is waiting
 /// for chats to finish means "restart now".
 pub fn start(runner: Arc<RunnerState>, force: bool) -> Result<(), String> {
+    require_checkout(&source_dir())?;
     {
         let mut s = STATUS.lock().unwrap_or_else(|e| e.into_inner());
         match s.phase {
@@ -302,6 +318,15 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&prev).unwrap(), "old");
         assert!(!staged.exists());
         std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn a_downloaded_binary_points_to_releases() {
+        let dir = std::env::temp_dir().join(format!("moedeck-nosrc-{}", uuid::Uuid::new_v4()));
+        let err = require_checkout(&dir).unwrap_err();
+        assert!(err.contains("installed from a download"));
+        assert!(err.ends_with("/releases"));
+        assert!(require_checkout(Path::new(env!("CARGO_MANIFEST_DIR"))).is_ok());
     }
 
     #[test]

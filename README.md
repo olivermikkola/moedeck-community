@@ -224,6 +224,8 @@ available `turn_context` from a bounded rollout tail, rather than guessing a mod
 
 ### Updating MoE Deck from the app
 
+A copy installed from a [release download](https://github.com/olivermikkola/moedeck-community/releases) can't update itself yet: **Check for updates** links to the releases page, and you replace the binary by hand (`moedeck install` again from the new download). The steps below apply to a source checkout.
+
 Settings → **This app** shows the commit MoE Deck was built from. **Check for
 updates** fetches `origin/main` of the source checkout and lists anything new.
 **Update & restart** then:
