@@ -10,7 +10,7 @@
   <img alt="Rust" src="https://img.shields.io/badge/built%20with-Rust%20stable-DEA584?logo=rust">
 </p>
 
-**MoE Deck** is a single-binary Rust daemon gateway for steering multiple local AI coding harnesses—**Claude Code (`claude`)**, **Antigravity (`agy`)**, **Codex (`codex`)**, **OpenCode (`opencode`)**, and **Keel (`keel`)**—from one cockpit, on your phone, desktop, or terminal (`moedeck tui`).
+**MoE Deck** is a single-binary Rust daemon gateway for steering multiple local AI coding harnesses—**Claude Code (`claude`)**, **Antigravity (`agy`)**, **Codex (`codex`)**, **OpenCode (`opencode`)**, and **Keel (`keel`)**—from one cockpit, on your phone, desktop, or terminal (`moedeck tui`). Keel is not publicly released yet; the other four use their public CLIs.
 
 Switch between agent conversations, create a Git worktree for a task, respond to supported native approval requests, or hand context to a different harness. A Git worktree separates working files and branches; it is not a security sandbox.
 
@@ -18,36 +18,13 @@ Switch between agent conversations, create a Git worktree for a task, respond to
 - **[Architecture (`ARCHITECTURE.md`)](ARCHITECTURE.md):** Lock-free JSONL/SQLite tailing, bounded seek parsing for 100 MB+ agent logs, cross-harness context handoff, and security boundaries.
 - **[Competitive Landscape (`COMPETITIVE_LANDSCAPE.md`)](COMPETITIVE_LANDSCAPE.md):** How MoE Deck compares to Claude Code Remote Control (`claude.ai/code`), Cursor Background Agents, Devin 2.0, OpenAI Codex Web, AionUi, and OpenCode Manager.
 
-### Renamed from Helm
-
-MoE Deck was called **Helm** until November 2026 (the name clashed with the
-Kubernetes tool). Existing installs keep working without changes:
-
-- chats, accounts and the passcode stay in `~/.config/helm` if that folder
-  exists; new installs use `~/.config/moedeck`;
-- the older `HELM_*` settings (`HELM_PASSCODE`, `HELM_PORT`, …) are still read;
-- a running `helm` binary updates itself in place from Settings.
-
-To switch the background service to the new name (stop the old one first,
-since both use port 7770):
-
-```bash
-systemctl --user disable --now helm.service
-rm ~/.config/systemd/user/helm.service && systemctl --user daemon-reload
-./target/release/moedeck install     # creates moedeck.service and shows the passcode
-```
-
-A passcode set as `HELM_PASSCODE` in the old service file is not carried over
-(service files never hold passcodes): afterwards the passcode is the one in
-`auth.json`, which `moedeck install` prints. Change it with `moedeck passcode <new>`.
-
 ## Quickstart
 
 Requirements: a Rust toolchain (stable via [rustup](https://rustup.rs)) on Linux or macOS. The harness CLIs (`claude`, `codex`, `opencode`, …) are only needed if you want MoE Deck to actually *drive* them—MoE Deck still discovers and renders their existing sessions without them.
 
 ```bash
 git clone https://github.com/olivermikkola/moedeck-community.git
-cd moedeck
+cd moedeck-community
 
 # Build release binary
 cargo build --release
@@ -125,11 +102,11 @@ All configuration is environment- or config-file-based; no flags required.
 | `MOEDECK_PORT` | `7770` | HTTP port the daemon binds on `0.0.0.0` |
 | `MOEDECK_PASSCODE` | unset | Cockpit passcode. Overrides `auth.json`. **Every** non-public request needs a logged-in session cookie — tailnet/loopback peers included |
 | `~/.config/moedeck/auth.json` | auto-created | `{ "passcode": … }` — a random passcode is generated on first start. It can be changed (`moedeck passcode <new>`) but not removed |
-| `~/.config/moedeck/profiles.json` | auto-created | Extra per-harness account profiles (see [Multiple accounts](#-multiple-accounts-per-harness)); their isolated homes live in `~/.config/moedeck/profiles/<id>/` |
+| `~/.config/moedeck/profiles.json` | auto-created | Extra per-harness account profiles; their isolated homes live in `~/.config/moedeck/profiles/<id>/` |
 
 > **Bind notice:** MoE Deck listens on `0.0.0.0` so your phone can reach it. A passcode is always required, but access to the cockpit can allow commands to run as your user. Restrict network access to trusted devices; use an encrypted connection such as Tailscale rather than exposing the HTTP port to the public internet.
 
-`moedeck --help` lists the options; `moedeck --version` prints the daemon version; `moedeck login <profile-id>` signs an extra account in (see below).
+`moedeck --help` lists the options; `moedeck --version` prints the daemon version; `moedeck login <profile-id>` signs an extra account profile in.
 
 ### Background service
 
@@ -142,26 +119,6 @@ if you set them. The passcode never goes into the service file.
 `moedeck install --dry-run` prints the file without touching anything;
 `moedeck uninstall` removes the service and keeps your chats and settings.
 On Linux, `loginctl enable-linger $USER` keeps MoE Deck running after you log out.
-
----
-
-## Multiple Accounts per Harness
-
-Need **three Antigravity accounts running side by side**? Any harness can have more than one signed-in account at once. Extra accounts get an *isolated shadow home*: MoE Deck launches the CLI with `HOME` pointed at a directory that mirrors your real home (symlinks — so `~/Projects`, `.gitconfig` and tools all keep working) **except** the harness's credential/state paths (`~/.gemini` for Antigravity, `~/.claude`, `~/.codex`, `~/.keel`, opencode's data dirs), which are private empty dirs per account. No symlinks, no root privileges, no changes to your primary sign-in.
-
-**In the cockpit:** tap the harness pill → under the selected harness you'll see **Accounts**: `👑 Primary` plus one chip per extra account (`🟢` signed in, `🔒` not yet). Pick one and the thread's next turn runs under that account; the pill and drawer show a `#2` badge, and threads keep their binding across restarts.
-
-**To sign a new account in** (one-time, from a terminal on the MoE Deck machine):
-
-```bash
-moedeck login agy-2        # opens the harness CLI with ONLY account #2's state visible
-# — or the raw form the cockpit prints: —
-HOME=~/.config/moedeck/profiles/agy-2/home agy
-```
-
-Finish the OAuth flow in the browser that pops up; **choose the other Google account** there (the browser's own cookies are shared, the CLI's credentials are not). Afterwards its sessions appear in the drawer as separate threads (`agy:agy-2:…`) and you can run turns on all accounts truly in parallel.
-
-API: `GET /api/profiles`, `POST /api/profiles {harness}` (creates the next `agy-N`), `DELETE /api/profiles/<id>[?purge=1]` (unregister; `purge` also removes its home). Threads bind via the `profile` field on create/patch/send payloads — `null`/`"default"` means the primary account. Swarm bounces keep the source thread's account when they stay on the same harness; sprints can pin an account too.
 
 ---
 

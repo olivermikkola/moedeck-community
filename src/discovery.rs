@@ -57,8 +57,24 @@ pub fn config_dir() -> PathBuf {
     });
     let _ = fs::create_dir_all(dir.join("threads"));
     let _ = fs::create_dir_all(dir.join("uploads"));
+    restrict_to_owner(&dir);
     dir
 }
+
+/// Chats, uploads and extra accounts' sign-ins live under the config dir, so
+/// other users on the machine must not be able to read it.
+#[cfg(unix)]
+fn restrict_to_owner(dir: &Path) {
+    use std::os::unix::fs::PermissionsExt;
+    if let Ok(meta) = fs::metadata(dir) {
+        if meta.permissions().mode() & 0o077 != 0 {
+            let _ = fs::set_permissions(dir, fs::Permissions::from_mode(0o700));
+        }
+    }
+}
+
+#[cfg(not(unix))]
+fn restrict_to_owner(_dir: &Path) {}
 
 /// Chats hidden from the drawer. Only MoE Deck forgets them: native session files
 /// and overlays stay where they are, and unarchiving brings a chat back.
@@ -3173,6 +3189,19 @@ fn collect_files_shallow(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn config_dir_is_made_owner_only() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("moedeck-perm-{}", Uuid::new_v4()));
+        fs::create_dir_all(&dir).unwrap();
+        fs::set_permissions(&dir, fs::Permissions::from_mode(0o775)).unwrap();
+        restrict_to_owner(&dir);
+        let mode = fs::metadata(&dir).unwrap().permissions().mode() & 0o777;
+        let _ = fs::remove_dir_all(&dir);
+        assert_eq!(mode, 0o700);
+    }
 
     #[test]
     fn test_set_overlay_native_session_does_not_deadlock() {

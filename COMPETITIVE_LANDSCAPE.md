@@ -15,8 +15,8 @@ This document analyzes the current state of mobile and remote AI coding agent in
   - Keeps local filesystem and MCP servers intact.
 - **Weaknesses & Lock-in:**
   - **100% locked to Claude (`api.anthropic.com`)**: Cannot run Google Antigravity (`agy`), OpenAI Codex (`codex`), or OpenCode (`opencode`).
-  - **Breaks with custom routers/proxies**: Cannot authenticate when `ANTHROPIC_BASE_URL` points to a local router like OmniRoute (`localhost:20128`) or custom model providers.
-  - **Session fragility**: Terminal disconnects or network drops require manual `tmux` attachment (`claude-rc.service`) and only expose the single session launched with `remote-control`.
+  - **Breaks with custom routers/proxies**: Cannot authenticate when `ANTHROPIC_BASE_URL` points to a local router or custom model providers.
+  - **Session fragility**: Terminal disconnects or network drops require manual `tmux` attachment and only expose the single session launched with `remote-control`.
 
 ### B. Cursor Background Agents (`cursor.com/agents` & Mobile PWA)
 - **Architecture:** Spawns isolated cloud Ubuntu VMs cloned from a GitHub repository.
@@ -25,7 +25,7 @@ This document analyzes the current state of mobile and remote AI coding agent in
   - Follow-up prompts can be sent mid-run from a phone browser.
   - Multi-model support inside Cursor's cloud billing wrapper.
 - **Weaknesses:**
-  - **Cloud-only execution**: Runs on remote VMs rather than your local workstation/Beelink (no access to local GPUs, local Xvfb/Vulkan display servers, unpushed branches, or local databases).
+  - **Cloud-only execution**: Runs on remote VMs rather than your local workstation (no access to local GPUs, local Xvfb/Vulkan display servers, unpushed branches, or local databases).
   - **Per-VM startup latency** and separate cloud compute billing.
 
 ### C. OpenAI Codex Web (`chatgpt.com/codex`) & Codex App Server
@@ -63,7 +63,7 @@ This document analyzes the current state of mobile and remote AI coding agent in
 | **Runs on Local Hardware & GPU (Zero Cloud VM)** | ✅ | ❌ | ✅ | ✅ | **✅** |
 | **Multi-Harness (`Claude` + `AGY` + `Codex` + `OpenCode`)** | ❌ | ❌ | ❌ | ✅ | **✅** |
 | **1-Tap Mid-Thread Harness Handoff** | ❌ | ❌ | ❌ | ❌ | **✅** |
-| **Works with Custom Routers (OmniRoute / Local Proxies)** | ❌ | ❌ | ✅ | ✅ | **✅** |
+| **Works with Custom Routers (Local Proxies)** | ❌ | ❌ | ✅ | ✅ | **✅** |
 | **Native Discovery of Existing Host CLI Sessions** | ❌ | ❌ | ⚠️ (OpenCode only) | ⚠️ | **✅ (All 4)** |
 | **Editorial Mobile UI (`#141413` + Collapsible Steps)** | ✅ | ⚠️ | ❌ | ❌ | **✅** |
 | **`@file` Path Autocomplete in Mobile Composer** | ✅ | ✅ | ✅ | ❌ | **✅** |
