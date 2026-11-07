@@ -31,6 +31,13 @@ phase uses a separate context with the real worker enabled.
 
 WebKit automation is not physical iPhone keyboard, safe-area or gesture proof.
 
+`return.test.cjs` checks the activity overview with real gateway requests and
+scripted Codex/Keel subprocesses: a quiet first visit, unseen changes across
+reloads, native approval priority, search and harness filters, and read state
+that survives failed loads, an open drawer, a hidden page and scrolling back.
+It also checks archived updates, damaged saved state and narrow/landscape layouts.
+Screenshots are saved as `*-return-*.png`.
+
 `harness.test.cjs` also exercises Claude/AGY native session adoption and resume,
 AGY's nested stream format, OpenCode's newest messages and truncation counts,
 visible provider failures and Stop, repeated prompts, and delivery of Safe
