@@ -1,6 +1,6 @@
 [package]
 name = "moedeck"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 description = "MoE Deck: run Claude Code, Codex, Antigravity, OpenCode, Keel, Cursor and Grok from your phone"
 license = "FSL-1.1-ALv2"
