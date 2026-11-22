@@ -13,10 +13,10 @@ Most developer tools for CLI coding agents fall into one of two traps:
 
 ### One Captain, Multi-Harness Freedom
 - **Harness-Agnostic Command:** A conversation belongs to your project and intent, not to a single CLI vendor. In MoE Deck, the **Harness Selector** sits right beside the **Model & Effort Selector** in the composer bar.
-- **Seamless Mid-Thread Handoff:** You can start an investigation with **Claude Code**, flip the harness pill to **Antigravity** or **Codex**, and keep talking in the exact same thread. MoE Deck handles the context handoff automatically below deck.
+- **Seamless Mid-Thread Handoff:** You can start an investigation with **Claude Code (`Opus 5.5`)**, flip the harness pill to **Antigravity (`Gemini 4 Argon`)** or **Codex (`GPT-5.6 Sol`)**, and keep talking in the exact same thread. MoE Deck handles the context handoff automatically below deck.
 
 ### Instant Bouncing & Unmistakable Identity
-- **Zero-Friction Thread Bouncing:** Switching between two or three active streams of work (e.g., a game-development task and a systems/tooling task) takes a single thumb tap via the top Quick-Bounce strip or the top-right Flip pill—never a multi-step menu dive.
+- **Zero-Friction Thread Bouncing:** Switching between two or three active streams of work (e.g., an autonomous game-dev loop in `3D-auto` and a systems/tooling task) takes a single thumb tap via the top Quick-Bounce strip or the top-right Flip pill—never a multi-step menu dive.
 - **At-a-Glance Visual Signatures:** While the dark editorial layout stays calm and uniform (`#141413`), the active harness's signature accent color adapts immediately so you always know which engine is driving:
   - **Claude Code (`claude`):** Warm Terracotta (`#D97757`)
   - **Antigravity (`agy`):** Electric Blue (`#4F8FF7`)
@@ -30,4 +30,4 @@ Most developer tools for CLI coding agents fall into one of two traps:
 
 ### Single-Binary Rust Simplicity & Silence
 - **No Framework Sprawl:** MoE Deck compiles into a single standalone Rust binary (`hyper` + `tokio`) with the PWA frontend embedded at compile time.
-- **Lightweight on Host Hardware:** Keep idle resource use low so the cockpit can share a machine with development workloads.
+- **Silent on Host Hardware:** Idles at ~5 MB of RAM and 0.0% CPU—never spinning up workstation fans or competing with game builds, local LLMs, or CI runners.

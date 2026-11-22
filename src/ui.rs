@@ -1,7 +1,7 @@
 pub const MANIFEST_JSON: &str = r##"{
   "name": "MoE Deck — Multi-Harness Agent Gateway",
   "short_name": "MoE Deck",
-  "description": "Mobile-first multi-harness command UI for Claude Code, Antigravity, Codex, and OpenCode",
+  "description": "Mobile-first multi-harness command UI for Claude Code, Antigravity, Codex, OpenCode, Keel, Cursor, and Grok",
   "id": "/",
   "scope": "/",
   "start_url": "/",
@@ -128,11 +128,12 @@ pub fn sw_js() -> String {
 }
 
 pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
-  <meta name="theme-color" content="#0d0d0d" />
+  <meta name="theme-color" content="#0c0c0e" media="(prefers-color-scheme: dark)" />
+  <meta name="theme-color" content="#f4f4f1" media="(prefers-color-scheme: light)" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="MoE Deck" />
@@ -141,19 +142,61 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
   <link rel="apple-touch-icon" sizes="180x180" href="/icon-180.png" />
   <title>MoE Deck</title>
   <style>
+    /* Calm shell. Dark is the default; light follows the system.
+       Token names stay the ones Deck and MoE already share. The MoE
+       design branch was not readable from this checkout, so the values
+       follow that spec's written direction (system font, soft cards,
+       one pill, 44px targets) rather than a copied :root block. */
     :root {
-      --bg: #0d0d0d;
-      --surface: #1c1c1e;
-      --surface-2: #29292b;
+      color-scheme: dark;
+      --bg: #0c0c0e;
+      --surface: #161618;
+      --surface-2: #1e1e22;
+      --card: #161618;
       --border: rgba(255, 255, 255, 0.08);
-      --border-strong: rgba(255, 255, 255, 0.13);
-      --text: #ececeb;
-      --text-muted: #aaa9ae;
-      --text-dim: #919096;
-      --accent: #D97757;
-      --accent-soft: rgba(217, 119, 87, 0.16);
+      --border-strong: rgba(255, 255, 255, 0.14);
+      --text: #f4f4f5;
+      --text-muted: #a1a1aa;
+      --text-dim: #71717a;
+      --accent: #f4f4f5;
+      --accent-ink: #0c0c0e;
+      --accent-soft: rgba(255, 255, 255, 0.08);
+      --ok: #86efac;
+      --warn: #f5d08a;
+      --danger: #f0a8a8;
+      --shadow: 0 12px 40px rgba(0, 0, 0, 0.32);
+      --radius-card: 22px;
+      --radius-pill: 999px;
+      --tap: 44px;
+      --font: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       --safe-top: env(safe-area-inset-top, 0px);
       --safe-bottom: env(safe-area-inset-bottom, 0px);
+      --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+      --t-ok: var(--ok);
+      --t-err: var(--danger);
+      --t-run: var(--warn);
+      --t-dim: var(--text-dim);
+    }
+    @media (prefers-color-scheme: light) {
+      :root {
+        color-scheme: light;
+        --bg: #f4f4f1;
+        --surface: #ffffff;
+        --surface-2: #ecece8;
+        --card: #ffffff;
+        --border: rgba(22, 22, 24, 0.08);
+        --border-strong: rgba(22, 22, 24, 0.14);
+        --text: #161618;
+        --text-muted: #5c5c66;
+        --text-dim: #73737c;
+        --accent: #161618;
+        --accent-ink: #f4f4f1;
+        --accent-soft: rgba(22, 22, 24, 0.06);
+        --ok: #0f7a4d;
+        --warn: #8a5a10;
+        --danger: #a33b3b;
+        --shadow: 0 12px 32px rgba(22, 22, 24, 0.08);
+      }
     }
 
     * {
@@ -168,8 +211,8 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
       height: 100%;
       background: var(--bg);
       color: var(--text);
-      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif;
-      font-size: 14.5px;
+      font-family: var(--font);
+      font-size: 16px;
       line-height: 1.48;
       overflow: hidden;
       overscroll-behavior: none;
@@ -198,7 +241,7 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
       align-items: center;
       justify-content: space-between;
       gap: 8px;
-      background: rgba(13,13,13,0.88);
+      background: color-mix(in srgb, var(--bg) 88%, transparent);
       backdrop-filter: blur(16px);
       -webkit-backdrop-filter: blur(16px);
       z-index: 20;
@@ -208,7 +251,7 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
       width: 44px;
       height: 44px;
       border-radius: 999px;
-      background: linear-gradient(155deg, #262628, #19191b);
+      background: var(--surface);
       border: 1px solid var(--border);
       color: var(--text);
       display: inline-flex;
@@ -362,7 +405,7 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
     }
     .msg-user-bubble {
       max-width: 90%;
-      background: #242426;
+      background: var(--surface-2);
       border: none;
       color: var(--text);
       padding: 12px 16px;
@@ -465,7 +508,7 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
     .prose {
       font-size: 16px;
       line-height: 1.65;
-      color: #e9e9eb;
+      color: var(--text);
       word-break: break-word;
     }
     .prose p {
@@ -477,7 +520,7 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
     .prose h2, .prose h3 {
       font-size: 18px;
       font-weight: 650;
-      color: #ffffff;
+      color: var(--text);
       margin: 22px 0 10px;
       letter-spacing: -0.01em;
     }
@@ -493,20 +536,20 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
       line-height: 1.6;
     }
     .prose strong {
-      color: #ffffff;
+      color: var(--text);
       font-weight: 640;
     }
     .prose code {
       font-family: "SF Mono", "JetBrains Mono", ui-monospace, monospace;
       font-size: 12.5px;
       background: rgba(255,255,255,0.075);
-      color: #f2f2f0;
+      color: var(--text);
       padding: 1px 5px;
       border-radius: 4px;
       word-break: break-word;
     }
     .prose pre {
-      background: #1a1a18;
+      background: var(--surface);
       border: 1px solid var(--border);
       border-radius: 10px;
       padding: 10px 12px;
@@ -524,49 +567,33 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
       text-underline-offset: 2px;
     }
 
-    /* Terminal pane: a turn drawn in the order it happened, like a CLI agent */
-    :root { --mono: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, Consolas, monospace; --t-ok: #4ade80; --t-err: #f87171; --t-run: #facc15; --t-dim: #8b8b8b; }
-    .chat-scroll { font-family: var(--mono); font-size: 13.5px; line-height: 1.55; padding: 16px 14px 20px; }
-    .chat-scroll .prose { font-size: 13.5px; line-height: 1.55; color: #e6e6e6; }
-    .chat-scroll .prose p { margin: 0 0 8px; }
-    .chat-scroll .prose h2, .chat-scroll .prose h3 { font-size: 13.5px; font-weight: 700; margin: 12px 0 6px; color: #fff; }
-    .chat-scroll .prose h2::before { content: "\0023\0023  "; color: var(--t-dim); }
-    .chat-scroll .prose h3::before { content: "\0023\0023\0023  "; color: var(--t-dim); }
-    .chat-scroll .prose ul, .chat-scroll .prose ol { margin: 2px 0 8px; padding-left: 20px; }
-    .chat-scroll .prose li { margin-bottom: 2px; line-height: 1.55; }
-    .chat-scroll .prose code { font-size: inherit; background: none; color: #93c5fd; padding: 0; }
-    .chat-scroll .prose pre { background: #111; border-radius: 4px; padding: 8px 10px; }
-    .chat-scroll .prose pre code { color: #e6e6e6; }
-    .t-turn { margin-bottom: 18px; }
-    .t-user { display: flex; gap: 8px; padding: 6px 10px; margin: 0 0 14px; background: #1d1d1d; border-left: 2px solid var(--t-dim); white-space: pre-wrap; word-break: break-word; color: #f2f2f2; }
-    .t-user .t-glyph { color: var(--t-dim); }
-    .t-line { display: flex; gap: 8px; margin: 0 0 6px; min-width: 0; }
-    .t-glyph { flex: 0 0 auto; width: 1ch; color: #e6e6e6; user-select: none; }
-    .t-body { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-    .t-tool, .t-think { cursor: pointer; }
-    .t-tool .t-glyph { color: var(--t-ok); }
-    .t-tool.error .t-glyph { color: var(--t-err); }
-    .t-tool.running .t-glyph, .t-tool.waiting_approval .t-glyph { color: var(--t-run); animation: pulseDot 1.2s infinite; }
-    .t-tool.denied .t-glyph { color: var(--t-dim); }
-    .t-tool-name { font-weight: 700; color: #f2f2f2; }
-    .t-tool-arg { color: var(--t-dim); }
-    .t-tool.waiting_approval .t-tool-arg::after { content: "  awaiting approval"; color: var(--t-run); }
-    .t-tool.denied .t-tool-arg::after { content: "  denied"; color: var(--t-err); }
-    .t-peek { color: var(--t-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .t-peek::before { content: "⎿  "; }
-    .t-detail { display: none; margin-top: 4px; }
-    .t-line.open .t-detail { display: block; }
-    .t-line.open .t-peek { display: none; }
-    .t-detail pre { margin: 0 0 6px; padding: 6px 8px; max-height: 320px; overflow: auto; background: #111; border-left: 2px solid #333; color: #cfcfcf; font: inherit; font-size: 12px; white-space: pre-wrap; word-break: break-word; }
-    .t-detail .t-label { color: var(--t-dim); font-size: 11.5px; }
-    .t-tool.error .t-detail pre.t-out { border-left-color: var(--t-err); }
-    .t-think .t-glyph, .t-think .t-body { color: var(--t-dim); font-style: italic; }
-    .t-think .t-detail { white-space: pre-wrap; font-size: 12.5px; }
-    .t-working { color: var(--t-dim); }
-    .t-working .t-glyph { color: var(--accent); animation: pulseDot 1.2s infinite; }
-    .t-meta { display: flex; align-items: center; gap: 10px; color: var(--t-dim); font-size: 11.5px; margin-top: 2px; }
-    .t-meta button { background: none; border: 0; padding: 4px 0; color: var(--t-dim); font: inherit; cursor: pointer; }
-    .t-meta button:hover { color: #e6e6e6; }
+    /* Conversation: prose, one status line, raw steps behind a disclosure. */
+    .chat-scroll { font-family: var(--font); font-size: 16px; line-height: 1.55; padding: 20px 18px 28px; }
+    .chat-scroll .prose { font-size: 16px; line-height: 1.65; color: var(--text); }
+    .chat-scroll .prose p { margin: 0 0 14px; }
+    .chat-scroll .prose h2, .chat-scroll .prose h3 { font-size: 18px; font-weight: 650; margin: 18px 0 8px; color: var(--text); }
+    .chat-scroll .prose ul, .chat-scroll .prose ol { margin: 4px 0 12px; padding-left: 20px; }
+    .chat-scroll .prose li { margin-bottom: 6px; line-height: 1.55; }
+    .chat-scroll .prose code { font-family: var(--mono); font-size: 0.92em; background: var(--surface-2); color: var(--text); padding: 1px 5px; border-radius: 6px; }
+    .chat-scroll .prose pre { background: var(--surface); border-radius: 14px; padding: 12px 14px; }
+    .chat-scroll .prose pre code { color: var(--text); background: none; padding: 0; }
+    .t-turn { margin: 0 0 28px; }
+    .msg-user-turn { display: flex; flex-direction: column; align-items: flex-end; }
+    .t-user { max-width: min(88%, 520px); margin: 0 0 8px; padding: 12px 16px; background: var(--surface-2); color: var(--text); border-radius: 20px 20px 6px 20px; white-space: pre-wrap; word-break: break-word; }
+    .t-line { margin: 0 0 8px; min-width: 0; }
+    .t-glyph { display: none; }
+    .t-body { min-width: 0; overflow-wrap: anywhere; }
+    .status-line { margin: 0 0 8px; color: var(--text-muted); font-size: 15px; line-height: 1.4; }
+    .steps { margin: 4px 0 8px; }
+    .steps summary { min-height: var(--tap); display: flex; align-items: center; cursor: pointer; color: var(--text-muted); font-size: 15px; list-style: none; }
+    .steps summary::-webkit-details-marker { display: none; }
+    .step { margin: 0 0 10px; }
+    .step-name { color: var(--text); font-size: 15px; margin-bottom: 4px; }
+    .step-raw { margin: 0; padding: 10px 12px; max-height: 280px; overflow: auto; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; color: var(--text-muted); font-family: var(--font); font-size: 14px; line-height: 1.45; white-space: pre-wrap; word-break: break-word; }
+    .t-meta { display: flex; align-items: center; gap: 4px; color: var(--text-dim); font-size: 13px; margin-top: 4px; }
+    .t-meta button { background: none; border: 0; min-height: var(--tap); min-width: var(--tap); padding: 0 8px; color: var(--text-muted); font: inherit; cursor: pointer; }
+    .t-meta button:hover { color: var(--text); }
+    .harness-word { color: var(--text-muted); }
 
     /* Multiplex panes (tmux/btop look). The focused pane receives the composer. */
     .app-shell { max-width: none; }
@@ -577,36 +604,43 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
     .pane-grid[data-count="3"] > .pane:first-child { grid-row: span 2; }
     .pane-grid[data-count="4"] { grid-template: 1fr 1fr / 1fr 1fr; }
     .pane-grid[data-count="5"], .pane-grid[data-count="6"] { grid-template: 1fr 1fr / 1fr 1fr 1fr; }
-    .pane { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; padding-top: 0.6em; border: 1px solid #3a3a3a; border-radius: 6px; background: var(--bg); }
-    .pane.focused { border-color: var(--t-ok); }
-    .pane.busy:not(.focused) { border-color: #6b5d1f; }
-    .pane-head { position: absolute; top: -0.8em; left: 8px; right: 8px; display: flex; align-items: center; gap: 6px; font: 12px/1.4 var(--mono); color: var(--t-dim); pointer-events: none; z-index: 1; }
+    .pane { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; padding-top: 0.6em; border: 1px solid var(--border); border-radius: var(--radius-card); background: var(--bg); }
+    .pane.focused { border-color: var(--border-strong); }
+    .pane.busy:not(.focused) { border-color: var(--border); }
+    .pane-head { position: absolute; top: -0.8em; left: 8px; right: 8px; display: flex; align-items: center; gap: 6px; font: 13px/1.4 var(--font); color: var(--text-dim); pointer-events: none; z-index: 1; }
     .pane-head > * { background: var(--bg); padding: 0 4px; pointer-events: auto; }
     .pane-label { display: flex; gap: 6px; min-width: 0; overflow: hidden; white-space: nowrap; cursor: grab; border: 0; color: inherit; font: inherit; }
     .pane-label b { font-weight: 700; }
-    .pane-label .pane-name { color: #e6e6e6; overflow: hidden; text-overflow: ellipsis; }
-    .pane.focused .pane-idx { color: var(--t-ok); }
+    .pane-label .pane-name { color: var(--text); overflow: hidden; text-overflow: ellipsis; }
+    .pane.focused .pane-idx { color: var(--text); }
     .pane-spacer { flex: 1; background: none; pointer-events: none; }
     .pane-btn { border: 0; color: var(--t-dim); font: inherit; cursor: pointer; min-width: 26px; }
-    .pane-btn:hover { color: #fff; }
-    .pane .chat-scroll, .pane-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 14px 12px 12px; -webkit-mask-image: linear-gradient(transparent, #000 14px); mask-image: linear-gradient(transparent, #000 14px); font-family: var(--mono); font-size: var(--term-font, 13.5px); line-height: 1.55; }
+    .pane-btn:hover { color: var(--text); }
+    .pane .chat-scroll, .pane-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 18px 16px 16px; font-family: var(--font); font-size: 16px; line-height: 1.55; }
     .pane-scroll { cursor: pointer; }
     .pane-grid pre, .pane-grid .msg-images { touch-action: pan-x pan-y; }
-    .pane .chat-scroll .prose, .pane-scroll .prose { font-size: var(--term-font, 13.5px); }
+    .pane .chat-scroll .prose, .pane-scroll .prose { font-size: 16px; }
     .pane.drop-target { border-style: dashed; border-color: var(--t-run); }
-    .tmux-bar { display: flex; align-items: center; gap: 2px; margin: 4px 10px 6px; background: #4caf50; color: #0b0b0b; font: 12.5px/1.6 var(--mono); white-space: nowrap; overflow-x: auto; scrollbar-width: none; border-radius: 2px; }
+    .tmux-bar { display: flex; align-items: center; gap: 2px; margin: 4px 10px 6px; background: var(--surface); color: var(--text-muted); font: 13px/1.4 var(--font); white-space: nowrap; overflow-x: auto; scrollbar-width: none; border-radius: 12px; border: 1px solid var(--border); }
     .tmux-bar::-webkit-scrollbar { display: none; }
-    .tmux-bar button { border: 0; background: none; color: inherit; font: inherit; padding: 4px 7px; min-height: 32px; cursor: pointer; }
-    .tmux-bar .tmux-win.active { background: #0b0b0b; color: #4caf50; font-weight: 700; }
-    .tmux-bar .tmux-win.busy::after { content: " ●"; }
-    .tmux-bar .tmux-win.approval { background: #ef4444; color: #fff; }
+    .tmux-bar button { border: 0; background: none; color: inherit; font: inherit; padding: 4px 8px; min-height: var(--tap); cursor: pointer; }
+    .tmux-bar .tmux-win.active { background: var(--surface-2); color: var(--text); font-weight: 650; border-radius: 10px; }
+    .tmux-bar .tmux-win.busy::after { content: " · working"; }
+    .tmux-bar .tmux-win.approval { color: var(--danger); }
     .tmux-bar .tmux-fill { flex: 1; }
     .tmux-bar .tmux-clock { padding: 0 8px; }
     /* Minimal look (default): no window bar, and a lone pane drops its frame. */
     .tmux-bar[hidden] { display: none; }
     .app-shell.minimal .pane-grid[data-count="1"] > .pane { border-color: transparent; }
     .app-shell.minimal .pane-grid[data-count="1"] > .pane > .pane-head { display: none; }
-    .bottom-dock { width: 100%; max-width: 980px; margin: 0 auto; }
+    .bottom-dock { width: 100%; max-width: 760px; margin: 0 auto; }
+    .app-shell.minimal .pane-grid[data-count="1"],
+    .app-shell.minimal:has(.pane-grid[data-count="1"]) .top-header {
+      width: 100%;
+      max-width: 760px;
+      margin-left: auto;
+      margin-right: auto;
+    }
     .pane-grid.swipe-next > .pane { animation: paneIn 0.18s ease-out; }
     .pane-grid.swipe-prev > .pane { animation: paneIn 0.18s ease-out reverse; }
     @keyframes paneIn { from { transform: translateX(24px); opacity: 0.4; } to { transform: none; opacity: 1; } }
@@ -673,45 +707,32 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
 
     /* Interactive Remote Push Approvals (HITL) */
     .approval-dock {
-      background: #231212;
-      border: 1.5px solid #ef4444;
-      border-radius: 16px;
-      padding: 10px 12px;
-      margin-bottom: 8px;
-      box-shadow: 0 0 24px rgba(239, 68, 68, 0.28);
-      animation: pulseApproval 2.4s infinite ease-in-out;
+      background: var(--card);
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-card);
+      padding: 16px;
+      margin-bottom: 10px;
+      box-shadow: var(--shadow);
     }
-    .approval-dock.hidden {
-      display: none;
-    }
-    .approval-dock.risk-critical {
-      background: #241111;
-      border-color: #ef4444;
-      box-shadow: 0 0 24px rgba(239, 68, 68, 0.35);
-    }
-    .approval-dock.risk-high {
-      background: #231711;
-      border-color: #f97316;
-      box-shadow: 0 0 20px rgba(249, 115, 22, 0.25);
-    }
-    .approval-dock.risk-medium {
-      background: #201e14;
-      border-color: #eab308;
-      box-shadow: 0 0 18px rgba(234, 179, 8, 0.2);
-    }
-    @keyframes pulseApproval {
-      0%, 100% { box-shadow: 0 0 16px rgba(239,68,68,0.2); }
-      50% { box-shadow: 0 0 28px rgba(239,68,68,0.45); }
-    }
+    .approval-dock.hidden { display: none; }
+    .approval-kicker { margin: 0 0 4px; color: var(--text-muted); font-size: 13px; }
+    .approval-ask { margin: 0 0 10px; font-size: 18px; font-weight: 650; letter-spacing: -0.02em; }
+    .approval-target { margin: 0 0 10px; padding: 12px 14px; border-radius: 14px; background: var(--surface-2); color: var(--text); font-size: 15px; line-height: 1.45; white-space: pre-wrap; word-break: break-word; }
+    .approval-actions { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-top: 12px; }
+    .approval-actions button { min-height: var(--tap); border: 0; border-radius: var(--radius-pill); font: inherit; font-size: 15px; font-weight: 600; cursor: pointer; }
+    .approval-allow { background: var(--text); color: var(--accent-ink); }
+    .approval-always { background: var(--surface-2); color: var(--text); }
+    .approval-deny { background: transparent; color: var(--danger); border: 1px solid var(--border-strong) !important; }
 
     .running-task-bar {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 2px 6px 6px 6px;
-      font-size: 12px;
-      font-weight: 540;
-      color: #5899ff;
+      gap: 8px;
+      min-height: var(--tap);
+      padding: 0 8px;
+      font-size: 15px;
+      color: var(--text-muted);
       cursor: pointer;
       user-select: none;
     }
@@ -720,11 +741,11 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
     }
 
     .composer-card {
-      background: linear-gradient(155deg, #252527, #1b1b1d);
-      border: 1px solid var(--border-strong);
+      background: var(--card);
+      border: 1px solid var(--border);
       border-radius: 28px;
-      padding: 12px 10px 8px;
-      box-shadow: 0 8px 32px rgba(0,0,0,.24);
+      padding: 8px 8px 6px 12px;
+      box-shadow: var(--shadow);
       position: relative;
     }
 
@@ -812,12 +833,12 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
     }
 
     .composer-icon-btn {
-      width: 40px;
-      height: 44px;
+      width: var(--tap);
+      height: var(--tap);
       border-radius: 50%;
       background: transparent;
       border: none;
-      color: #d0cfd4;
+      color: var(--text-muted);
       display: inline-flex;
       align-items: center;
       justify-content: center;
@@ -865,12 +886,12 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
     }
 
     .send-btn {
-      width: 36px;
-      height: 36px;
+      width: var(--tap);
+      height: var(--tap);
       border-radius: 50%;
       background: var(--accent);
       border: none;
-      color: #ffffff;
+      color: var(--accent-ink);
       display: inline-flex;
       align-items: center;
       justify-content: center;
@@ -887,9 +908,9 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
     .project-form { display: grid; gap: 16px; }
     .project-form[hidden] { display: none; }
     .project-form label { display: grid; gap: 8px; font-size: 14px; }
-    .project-form input, .project-form select { width: 100%; min-width: 0; min-height: 48px; padding: 12px; border: 1px solid var(--border-strong); border-radius: 12px; background: #242426; color: var(--text); font: inherit; font-size: 16px; }
+    .project-form input, .project-form select { width: 100%; min-width: 0; min-height: 48px; padding: 12px; border: 1px solid var(--border-strong); border-radius: 12px; background: var(--surface-2); color: var(--text); font: inherit; font-size: 16px; }
     .project-form [role=alert] { color: #fca5a5; font-size: 14px; }
-    .rc-console { background: #0d0d0d; color: #e8e8e8; border-radius: 12px; padding: 12px; max-height: 240px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.5 ui-monospace, monospace; }
+    .rc-console { background: var(--surface-2); color: var(--text); border-radius: 12px; padding: 12px; max-height: 240px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: 14px/1.5 var(--font); }
     .rc-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
     .rc-link { display: block; padding: 14px; border-radius: 12px; background: #d97757; color: #fff; text-align: center; text-decoration: none; font-weight: 650; margin: 12px 0; }
     .rc-link[hidden] { display: none; }
@@ -900,7 +921,7 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
       left: 8px;
       right: 8px;
       bottom: calc(100% + 8px);
-      background: #20201e;
+      background: var(--surface);
       border: 1px solid var(--border-strong);
       border-radius: 16px;
       padding: 6px;
@@ -954,8 +975,8 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
       top: 0;
       left: 0;
       bottom: 0;
-      width: min(88vw, 360px);
-      background: #101011;
+      width: min(92vw, 400px);
+      background: var(--bg);
       border-right: none;
       z-index: 60;
       transform: translateX(-102%);
@@ -988,7 +1009,8 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
     }
     .new-thread-btn {
       background: var(--text);
-      color: #141413;
+      color: var(--accent-ink);
+      min-height: var(--tap);
       border: none;
       border-radius: 999px;
       padding: 6px 12px;
@@ -1032,9 +1054,10 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
       .drawer .conv-list { flex: none; overflow: visible; }
     }
     .filter-chip {
-      padding: 4px 10px;
+      min-height: var(--tap);
+      padding: 0 14px;
       border-radius: 999px;
-      font-size: 12px;
+      font-size: 14px;
       background: var(--surface);
       border: 1px solid var(--border);
       color: var(--text-muted);
@@ -1042,7 +1065,7 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
     }
     .filter-chip.active {
       background: var(--text);
-      color: #141413;
+      color: var(--accent-ink);
       font-weight: 600;
     }
 
@@ -1054,18 +1077,19 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
     .conv-item { -webkit-touch-callout:none; -webkit-user-select:none; user-select:none; }
     .drawer-archived-toggle { display:block; width:100%; margin:6px 0 10px; padding:12px 14px; background:none; border:1px solid var(--border); border-radius:12px; color:var(--text-muted); font-size:13px; text-align:left; }
     .conv-item {
-      padding: 14px 12px;
-      border-radius: 12px;
-      margin-bottom: 4px;
+      padding: 14px 14px;
+      border-radius: 16px;
+      margin-bottom: 6px;
       cursor: pointer;
       display: flex;
       flex-direction: column;
-      gap: 6px;
-      border: none;
+      gap: 4px;
+      border: 1px solid transparent;
+      min-height: 64px;
     }
     .conv-item.active {
       background: var(--surface);
-      border-color: var(--border-strong);
+      border-color: var(--border);
     }
     .conv-item-top {
       display: flex;
@@ -1074,13 +1098,16 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
       gap: 8px;
     }
     .conv-item-title {
+      flex: 1;
+      min-width: 0;
       font-size: 15px;
-      font-weight: 520;
+      font-weight: 560;
       color: var(--text);
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }
+    [hidden] { display: none !important; }
     .conv-item-engine { display: flex; align-items: center; gap: 5px; flex-shrink: 0; }
     @media (max-width: 374px) {
       .drawer #notifyBtn { display: none; }
@@ -1101,7 +1128,7 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
       bottom: 0;
       max-width: 720px;
       margin: 0 auto;
-      background: #171719;
+      background: var(--surface);
       border-top: 1px solid var(--border-strong);
       border-radius: 30px 30px 0 0;
       padding: 14px 20px calc(var(--safe-bottom) + 24px);
@@ -1134,7 +1161,7 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
     .sheet-option {
       padding: 18px 16px;
       border-radius: 16px;
-      background: #242426;
+      background: var(--surface-2);
       border: 1px solid transparent;
       margin-bottom: 4px;
       display: flex;
@@ -1147,7 +1174,7 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
     }
     .sheet-option.selected {
       border-color: transparent;
-      background: #2b2b2e;
+      background: var(--accent-soft);
     }
     .effort-grid {
       display: grid;
@@ -1158,7 +1185,7 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
     .effort-btn {
       padding: 12px 4px;
       border-radius: 12px;
-      background: #252522;
+      background: var(--surface-2);
       border: 1px solid var(--border);
       color: var(--text-muted);
       font-size: 12px;
@@ -1170,7 +1197,7 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
     }
     .effort-btn.selected {
       background: var(--accent);
-      color: #fff;
+      color: var(--accent-ink);
       border-color: var(--accent);
     }
 
@@ -1197,11 +1224,12 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
     .sheet-option { width: 100%; color: var(--text); text-align: left; font-family: inherit; }
     .conv-list { min-height: 0; }
     .sheet-close { position: absolute; right: 14px; top: 26px; font-size: 27px; font-weight: 300; }
-    .drawer-voice-setting { padding: 0 16px 8px; }
-    .drawer-voice-setting .filter-chip { min-height: 40px; }
     #modelPillBtn { flex: 1; }
     #pillModelName { overflow: hidden; text-overflow: ellipsis; }
+    #flipDot, #pillHarnessDot { display: none; }
+    .drawer-search { width: 100%; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 12px 14px; min-height: var(--tap); color: var(--text); font: inherit; font-size: 16px; outline: none; }
     .empty-mark { font-size: 50px; color: var(--accent); margin-bottom: 8px; }
+    .empty-state { min-height: 55vh; gap: 12px; }
     button { font-family: inherit; }
     button:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
     /* The home indicator hides behind the keyboard, so its inset isn't needed. */
@@ -1211,24 +1239,55 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
       .quick-bounce-strip { display: none; }
       .bottom-dock { padding-bottom: max(var(--safe-bottom), 4px); }
       .chat-scroll { padding-top: 12px; }
+      /* Phone in landscape: keep the project chip above the composer. */
+      .empty-state { min-height: 0; gap: 8px; }
+      .empty-state .empty-mark { display: none; }
     }
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
     }
+
+    .drawer-filters.has-agents { padding-bottom: 20px; }
+    .filter-chip { position: relative; }
+    .chip-dots { position: absolute; left: 0; right: 0; bottom: -11px; display: flex; justify-content: center; align-items: center; gap: 3px; pointer-events: none; }
+    .chip-more { font-size: 8.5px; color: var(--text-dim); line-height: 7px; }
+    .agent-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; background: var(--agent); }
+    .agent-dot.working { box-shadow: 0 0 0 2.5px color-mix(in srgb, var(--agent) 32%, transparent); animation: agentPulse 1.6s infinite ease-in-out; }
+    .agent-dot.stuck { background: transparent; border: 1.6px solid var(--agent); }
+    @keyframes agentPulse { 50% { box-shadow: 0 0 0 1px color-mix(in srgb, var(--agent) 12%, transparent); } }
+    .drawer-scroll { flex: 1; min-height: 0; overflow-y: auto; }
+    .drawer-scroll .conv-list { flex: none; overflow: visible; }
+    .agents-section { padding: 0 14px 2px; }
+    .agents-heading { color: var(--text-muted); font-size: 13px; padding: 4px 8px 7px; }
+    .agent-pill { display: flex; align-items: center; gap: 9px; width: 100%; min-height: var(--tap); margin-bottom: 6px; padding: 8px 14px; border: 0; border-radius: 16px; background: var(--surface); color: var(--text); font: inherit; text-align: left; cursor: pointer; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+    .agent-pill .agent-dot { width: 9px; height: 9px; margin-left: 2px; }
+    .agent-pill-name { font-size: 13px; font-weight: 600; white-space: nowrap; max-width: 46%; overflow: hidden; text-overflow: ellipsis; }
+    .agent-pill-doing { flex: 1; min-width: 0; font-size: 12.5px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .agent-pill-state { font-size: 11.5px; color: var(--text-dim); white-space: nowrap; }
+    .agent-pill-state.urgent { color: var(--text); font-weight: 600; }
+    .agents-more { width: 100%; min-height: 34px; border: 0; background: none; color: var(--text-muted); font: inherit; font-size: 12.5px; cursor: pointer; }
+    .agent-sheet-backdrop { position: fixed; inset: 0; z-index: 2000; display: flex; align-items: flex-end; justify-content: center; background: rgba(0,0,0,0.5); }
+    .agent-sheet { width: 100%; max-width: 420px; padding: 18px 18px calc(18px + env(safe-area-inset-bottom)); border-radius: 18px 18px 0 0; background: var(--surface); color: var(--text); }
+    .agent-sheet h3 { font-size: 15px; font-weight: 600; margin: 0 0 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .agent-sheet-scope { display: flex; gap: 6px; margin-bottom: 14px; }
+    .agent-sheet-scope .filter-chip { min-height: 36px; max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .agent-swatches { display: grid; grid-template-columns: repeat(8, 1fr); gap: 6px; margin-bottom: 14px; }
+    .agent-swatch { aspect-ratio: 1; border: 0; border-radius: 50%; cursor: pointer; }
+    .agent-sheet-reset { width: 100%; min-height: 40px; border: 1px solid var(--border-strong); border-radius: 10px; background: none; color: var(--text-muted); font: inherit; cursor: pointer; }
 
     .settings-entry { display:flex; align-items:center; gap:12px; margin:8px 14px; padding:14px; border:0; border-radius:14px; background:var(--surface); color:var(--text); font:inherit; text-align:left; cursor:pointer; }
     .settings-entry span:last-child { margin-left:auto; }
     .bottom-sheet.settings-sheet { height:var(--vvh,100dvh); max-height:100dvh; border-radius:0; padding:calc(var(--safe-top) + 12px) 20px max(var(--safe-bottom),20px); overflow:hidden; }
     .settings-sheet .sheet-handle { display:none; }
     .settings-sheet #sheetContent { height:100%; overflow:auto; overscroll-behavior:contain; }
-    .settings-sheet .sheet-title { position:sticky; top:0; background:#171719; z-index:1; justify-content:flex-start; gap:12px; }
+    .settings-sheet .sheet-title { position:sticky; top:0; background:var(--bg); z-index:1; justify-content:flex-start; gap:12px; }
     .settings-sheet .sheet-close { top:calc(var(--safe-top) + 22px); z-index:2; }
     .settings-section { margin:24px 0 30px; }
     .settings-section h2 { font-size:15px; margin:0 0 12px; font-weight:650; }
     .settings-section h3 { font-size:14px; margin-top:24px; }
     .settings-section-heading { display:flex; align-items:center; justify-content:space-between; gap:10px; }
     .settings-help { color:var(--text-muted); font-size:13px; line-height:1.6; }
-    .settings-group { background:#242426; border-radius:18px; overflow:hidden; }
+    .settings-group { background:var(--surface-2); border-radius:18px; overflow:hidden; }
     .settings-row { width:100%; display:flex; align-items:center; gap:12px; padding:16px; min-height:60px; background:transparent; border:0; border-bottom:1px solid var(--border); color:var(--text); font:inherit; text-align:left; }
     .settings-row:last-child { border-bottom:0; }
     .settings-row-label { flex:1; min-width:0; }
@@ -1240,7 +1299,7 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
     .settings-model { padding:14px; border-bottom:1px solid var(--border); font-size:14px; }
     .settings-model-editor { padding:14px; margin:10px 0; background:var(--surface); border-radius:14px; }
     .settings-model-editor label { display:block; color:var(--text-muted); font-size:12px; margin-bottom:12px; }
-    .settings-model-editor input, .model-search { display:block; width:100%; padding:12px; margin-top:6px; background:#29292b; color:var(--text); border:1px solid var(--border); border-radius:12px; font-size:16px; }
+    .settings-model-editor input, .model-search { display:block; width:100%; padding:12px; margin-top:6px; background:var(--surface); color:var(--text); border:1px solid var(--border); border-radius:12px; font-size:16px; }
     .model-search { margin:0 0 14px; }
     .model-choice[hidden] { display:none; }
     button:disabled { opacity:.55; cursor:default; }
@@ -1295,7 +1354,7 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
 
       <div class="running-task-bar hidden" id="runningTaskBar">
         <span id="runningTaskText">1 running task</span>
-        <button id="runningStopBtn" style="display:none;background:#ef4444;color:#fff;border:none;border-radius:7px;padding:4px 11px;font-size:11.5px;font-weight:700;cursor:pointer" onclick="event.stopPropagation(); if (state.activeId) stopConvTask(state.activeId)">■ Stop</button>
+        <button id="runningStopBtn" style="display:none;background:var(--surface-2);color:var(--text);border:1px solid var(--border);border-radius:999px;min-height:44px;padding:0 14px;font:inherit;font-size:14px;cursor:pointer" onclick="event.stopPropagation(); if (state.activeId) stopConvTask(state.activeId)">Stop</button>
         <span style="font-size:11.5px;color:var(--text-muted)">Details ▾</span>
       </div>
 
@@ -1351,17 +1410,14 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
 
         <div class="upload-preview-strip hidden" id="uploadPreviewStrip"></div>
 
-        <!-- Live Voice Waveform Bar (active during Walkie-Talkie / dictation) -->
-        <div id="voiceWaveBar" style="display:none;align-items:center;justify-content:space-between;padding:4px 10px;margin-bottom:6px;background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.3);border-radius:8px">
+        <!-- Browser-reported dictation state; no simulated audio meter. -->
+        <div id="voiceWaveBar" role="status" style="display:none;align-items:center;justify-content:space-between;padding:4px 10px;margin-bottom:6px;background:var(--surface);border:1px solid var(--border);border-radius:8px">
           <div style="display:flex;align-items:center;gap:6px">
             <span class="bounce-dot busy" style="background:#ef4444"></span>
-            <span style="font-size:11px;font-weight:700;color:#ef4444" id="voiceWaveStatus">🎙️ Listening…</span>
+            <span style="font-size:14px;font-weight:600;color:var(--text)" id="voiceWaveStatus">Listening…</span>
           </div>
           <div style="display:flex;align-items:center;gap:6px">
-            <div id="voiceLevelMeter" style="width:60px;height:6px;background:#333;border-radius:3px;overflow:hidden">
-              <div id="voiceLevelFill" style="width:30%;height:100%;background:#ef4444;transition:width 0.1s ease"></div>
-            </div>
-            <button class="filter-chip" onclick="cancelVoiceRecording()" style="padding:1px 6px;font-size:9.5px;color:#f87171">Cancel</button>
+            <button class="filter-chip" onclick="cancelVoiceRecording()" aria-label="Cancel dictation" style="min-height:40px;padding:4px 10px;font-size:14px">Cancel</button>
           </div>
         </div>
 
@@ -1401,7 +1457,7 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
           <div class="composer-spacer"></div>
 
           <!-- Voice Dictation Button -->
-          <button class="composer-icon-btn" id="micBtn" title="Voice push-to-talk">
+          <button class="composer-icon-btn" id="micBtn" title="Dictate into draft" aria-label="Dictate message">
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="2" width="6" height="11" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
           </button>
 
@@ -1420,10 +1476,7 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
   <!-- Left Drawer -->
   <aside class="drawer" id="drawer">
     <div class="drawer-header">
-      <div class="drawer-brand">
-        <span style="width:9px;height:9px;border-radius:50%;background:var(--accent)"></span>
-        MoE Deck
-      </div>
+      <div class="drawer-brand">MoE Deck</div>
       <div style="display:flex;align-items:center;gap:6px">
         <button class="filter-chip" id="notifyBtn" onclick="enableNotifications()" title="Enable mobile notifications when tasks finish">🔔 Alerts</button>
         <button class="new-thread-btn" id="newThreadBtn">+ New</button>
@@ -1445,7 +1498,7 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
         id="drawerSearchInput"
         type="search"
         placeholder="Search threads or projects…"
-        style="width:100%;background:#232320;border:1px solid var(--border-strong);border-radius:10px;padding:7px 11px;color:var(--text);font-size:12.5px;outline:none"
+        class="drawer-search"
       />
     </div>
     <div class="drawer-filters" id="drawerFilters">
@@ -1455,16 +1508,17 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
       <button class="filter-chip" data-filter="codex">Codex</button>
       <button class="filter-chip" data-filter="opencode">OpenCode</button>
       <button class="filter-chip" data-filter="keel">Keel</button>
+      <button class="filter-chip" data-filter="cursor">Cursor</button>
+      <button class="filter-chip" data-filter="grok">Grok</button>
     </div>
+    <div class="drawer-scroll">
+    <div class="agents-section" id="agentsSection" hidden></div>
     <div id="convListHeading" style="padding:12px 22px 8px;color:var(--text-muted);font-size:13px">Conversations</div>
     <div class="conv-list" id="convList"></div>
-    <button class="settings-entry" id="quickSettingsBtn" onclick="openQuickSettings()"><span aria-hidden="true">◐</span> Quick settings <span aria-hidden="true">›</span></button>
-    <button class="settings-entry" id="settingsBtn" onclick="openSettings()"><span aria-hidden="true">⚙</span> Settings <span aria-hidden="true">›</span></button>    <div hidden>    <div class="drawer-voice-setting">          <!-- Walkie-Talkie Mode Toggle -->
-          <button class="filter-chip" id="walkieTalkieToggleBtn" onclick="toggleWalkieTalkieMode()" title="Walkie-Talkie Mode: Auto-send on mic release" style="padding:2px 7px;font-size:10.5px">
-            <span id="walkieTalkieLabel">🎙️ Walkie</span>
-          </button>
     </div>
-    <!-- HITL Safety Mode Bar -->
+    <button class="settings-entry" id="backgroundWorkBtn" onclick="openBackgroundWork()">Background work <span aria-hidden="true">›</span></button>
+    <button class="settings-entry" id="quickSettingsBtn" onclick="openQuickSettings()"><span aria-hidden="true">◐</span> Quick settings <span aria-hidden="true">›</span></button>
+    <button class="settings-entry" id="settingsBtn" onclick="openSettings()"><span aria-hidden="true">⚙</span> Settings <span aria-hidden="true">›</span></button>    <div hidden>    <!-- HITL Safety Mode Bar -->
     <div style="margin:6px 12px 8px 12px;padding:8px 10px;border-radius:10px;background:#20201d;border:1px solid var(--border)">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
         <span style="font-size:11.5px;font-weight:650">🛡️ Safety Mode</span>
@@ -1495,7 +1549,7 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
   <!-- In-Cockpit Mobile Sandbox Preview Modal -->
   <div class="sandbox-modal" id="sandboxModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);backdrop-filter:blur(12px);z-index:900;flex-direction:column;align-items:center;justify-content:center;padding:12px">
     <div style="background:#191917;border:1px solid var(--border-strong);border-radius:18px;display:flex;flex-direction:column;width:100%;max-width:960px;height:94vh;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,0.7)">
-
+      
       <!-- Modal Top Bar -->
       <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--border);background:#1f1f1c;gap:8px;flex-wrap:wrap">
         <div style="display:flex;align-items:center;gap:8px">
@@ -1551,12 +1605,24 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
   </div>
 
   <script>
+    function linkedConversation() {
+      try {
+        const id = new URLSearchParams(location.search).get('c');
+        if (!id || id.length > 200 || /[\s?#/\\]/.test(id)) return null;
+        return id;
+      } catch (_) {
+        return null;
+      }
+    }
     const state = {
       harnesses: [],
       conversations: [],
+      goals: [],
       archived: new Set(),
       showArchived: false,
-      activeId: localStorage.getItem('helm_active_id') || null,
+      activeId: linkedConversation() || localStorage.getItem('helm_active_id') || null,
+      // A new chat that has no conversation yet: the first send creates it.
+      draftNew: false,
       previousId: localStorage.getItem('helm_prev_id') || null,
       detail: null,
       selectedHarness: null,
@@ -1586,7 +1652,6 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
       seenApprovalIds: new Set(),
       swarmSessions: [],
       swarmTargetHarness: null,
-      walkieTalkie: localStorage.getItem('helm_walkie') === 'true',
       audioChimes: localStorage.getItem('helm_chimes') !== 'false',
       offlineQueue: JSON.parse(localStorage.getItem('helm_offline_queue') || '[]'),
       reconnecting: false,
@@ -1730,7 +1795,7 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
       // No banner for the thread the user is already looking at.
       if (document.visibilityState === 'visible' && conv.id === state.activeId) return;
       if (!('Notification' in window) || Notification.permission !== 'granted') return;
-      const hc = HARNESS_COLORS[conv.harness] || HARNESS_COLORS.claude;
+      const hc = harnessTheme(conv.harness);
       const title = `⚡ ${hc.short} finished · ${conv.title}`;
       const body = conv.last_preview || `Ready in ${conv.subtitle}`;
       if (navigator.serviceWorker && navigator.serviceWorker.ready) {
@@ -1751,16 +1816,35 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
       agy: { accent: '#4F8FF7', soft: 'rgba(79, 143, 247, 0.16)', short: 'AGY' },
       codex: { accent: '#10A37F', soft: 'rgba(16, 163, 127, 0.16)', short: 'Codex' },
       opencode: { accent: '#A855F7', soft: 'rgba(168, 85, 247, 0.16)', short: 'OpenCode' },
-      keel: { accent: '#06B6D4', soft: 'rgba(6, 182, 212, 0.16)', short: 'Keel' }
+      keel: { accent: '#06B6D4', soft: 'rgba(6, 182, 212, 0.16)', short: 'Keel' },
+      cursor: { accent: '#F54E00', soft: 'rgba(245, 78, 0, 0.16)', short: 'Cursor' },
+      grok: { accent: '#E7E5E4', soft: 'rgba(231, 229, 228, 0.16)', short: 'Grok' }
     };
-    const HARNESS_ORDER = ['claude', 'codex', 'agy', 'opencode', 'keel'];
+    const HARNESS_ORDER = ['claude', 'codex', 'agy', 'opencode', 'keel', 'cursor', 'grok'];
+
+    // Known colors are a hint. Any new harness id (from the API or a chat)
+    // still gets a name and a neutral mark, never Claude's color by mistake.
+    function harnessTheme(id) {
+      if (id && HARNESS_COLORS[id]) return HARNESS_COLORS[id];
+      const fromApi = (state.harnesses || []).find(h => h.id === id);
+      const raw = fromApi?.short_name || fromApi?.name || String(id || 'Agent');
+      const short = raw.replace(/[-_]+/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).slice(0, 18);
+      return {
+        accent: fromApi?.accent || 'var(--text-muted)',
+        soft: fromApi?.accent_soft || 'transparent',
+        short: short || 'Agent'
+      };
+    }
 
     // Harnesses whose CLI is installed on the MoE Deck machine, so pickers
     // never offer one that can only fail. Before the first bootstrap: all.
+    // Ids the catalog doesn't know yet stay in the list.
     function installedHarnessIds() {
-      if (!state.harnesses.length) return HARNESS_ORDER;
-      const ids = state.harnesses.filter(h => h.available).map(h => h.id);
-      return HARNESS_ORDER.filter(id => ids.includes(id));
+      if (!state.harnesses.length) return HARNESS_ORDER.slice();
+      const available = state.harnesses.filter(h => h.available).map(h => h.id);
+      const known = HARNESS_ORDER.filter(id => available.includes(id));
+      const extra = available.filter(id => !known.includes(id));
+      return known.concat(extra);
     }
 
     function swarmTarget() {
@@ -1773,7 +1857,16 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
     function updateDrawerFilterChips() {
       const ids = new Set(installedHarnessIds());
       state.conversations.forEach(c => ids.add(c.harness));
-      document.querySelectorAll('#drawerFilters .filter-chip[data-filter]').forEach(btn => {
+      const bar = document.getElementById('drawerFilters');
+      ids.forEach(id => {
+        if (!id || id === 'all' || bar.querySelector(`[data-filter="${CSS.escape(id)}"]`)) return;
+        const btn = document.createElement('button');
+        btn.className = 'filter-chip';
+        btn.dataset.filter = id;
+        btn.textContent = harnessTheme(id).short;
+        bar.appendChild(btn);
+      });
+      bar.querySelectorAll('.filter-chip[data-filter]').forEach(btn => {
         const id = btn.dataset.filter;
         btn.hidden = id !== 'all' && !ids.has(id);
       });
@@ -1801,9 +1894,7 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
     }
 
     function applyHarnessTheme(harnessId) {
-      const theme = HARNESS_COLORS[harnessId] || HARNESS_COLORS.claude;
-      document.documentElement.style.setProperty('--accent', theme.accent);
-      document.documentElement.style.setProperty('--accent-soft', theme.soft);
+      const theme = harnessTheme(harnessId);
       const accounts = switchableAccounts(harnessId);
       const accountPill = document.getElementById('accountPillBtn');
       accountPill.hidden = accounts.length < 2;
@@ -1826,13 +1917,13 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
       }
       const ov = document.createElement('div');
       ov.id = 'loginOverlay';
-      ov.style.cssText = 'position:fixed;inset:0;z-index:10000;background:#0d0d0c;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:14px;padding:30px';
+      ov.style.cssText = 'position:fixed;inset:0;z-index:10000;background:var(--bg);color:var(--text);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:14px;padding:30px';
       ov.innerHTML = `
         <img src="/icon.svg" alt="" width="56" height="56" style="border-radius:14px">
-        <div style="font-weight:780;font-size:17px;color:var(--text)">MoE Deck · Locked</div>
-        <div style="font-size:12.5px;color:var(--text-muted)">Enter the cockpit passcode</div>
-        <form id="loginForm" style="display:flex;gap:8px;width:100%;max-width:280px">
-          <input id="loginPass" type="password" autocomplete="current-password" placeholder="Passcode" style="flex:1;background:#191917;border:1px solid var(--border-strong);border-radius:10px;padding:11px 12px;color:var(--text);font-size:15px;outline:none" />
+        <div style="font-weight:650;font-size:20px;color:var(--text)">MoE Deck</div>
+        <div style="font-size:15px;color:var(--text-muted)">Enter the passcode</div>
+        <form id="loginForm" style="display:flex;gap:8px;width:100%;max-width:320px">
+          <input id="loginPass" type="password" autocomplete="current-password" placeholder="Passcode" style="flex:1;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:12px 14px;min-height:44px;color:var(--text);font:inherit;font-size:16px;outline:none" />
           <button class="new-thread-btn" style="padding:8px 16px;font-size:15px" type="submit">→</button>
         </form>
         <div id="loginErr" style="font-size:12px;color:#ef4444;min-height:16px"></div>`;
@@ -1916,9 +2007,9 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
         state.safetyMode = data.safety_mode || 'standard';
         state.swarmSessions = data.swarm_sessions || [];
         state.sprints = data.sprints || [];
+        state.goals = data.goals || [];
 
         updateSafetyModeUI();
-        updateWalkieTalkieUI();
         checkNewApprovals(state.pendingApprovals);
         renderApprovalDock();
 
@@ -1939,7 +2030,7 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
         }
         state.archived = new Set(data.archived || []);
         syncPanes(newConvs.filter(c => !state.archived.has(c.id)));
-        if (!localStorage.getItem('helm_last_workdir') && data.home) {
+        if (!state.activeId && !state.detail && !state.draftNew && !localStorage.getItem('helm_last_workdir') && data.home) {
           const project = newConvs.find(c => c.workdir && c.workdir !== data.home);
           if (project) {
             state.selectedWorkdir = project.workdir;
@@ -1958,11 +2049,11 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
           }
         }
 
-        if (!state.activeId && state.conversations.length > 0) {
+        if (!state.activeId && !state.draftNew && state.conversations.length > 0) {
           state.activeId = state.conversations[0].id;
           const other = state.conversations.find(c => c.id !== state.activeId);
           if (other) state.previousId = other.id;
-        } else if (state.activeId === activeAtStart && !state.detail && !creatingThread && state.conversations.length > 0 && !state.conversations.some(c => c.id === state.activeId)) {
+        } else if (!state.draftNew && state.activeId === activeAtStart && !state.detail && !sendingTurn && state.conversations.length > 0 && !state.conversations.some(c => c.id === state.activeId)) {
           state.activeId = state.conversations[0].id;
         }
         renderBounceStrip();
@@ -1974,7 +2065,7 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
         } else {
           const harness = state.harnesses.find(h => h.available);
           if (!state.selectedHarness && harness) pickHarness(harness.id);
-          document.getElementById('convSubtitle').textContent = 'Choose a project to begin';
+          renderDraftHeader();
           renderMessages([], false);
         }
       } catch (e) {
@@ -1999,12 +2090,24 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
         state.previousId = state.activeId;
         localStorage.setItem('helm_prev_id', state.previousId);
       }
+      if (changing) cancelVoiceRecording();
       if (changing && state.detail) {
         // The pane we leave keeps showing what it had until its next refresh.
         state.paneCache.set(state.detail.summary.id, { stamp: '', messages: state.detail.messages });
       }
       state.activeId = id;
+      state.draftNew = false;
       localStorage.setItem('helm_active_id', id);
+      if (switchExplicit) {
+        try {
+          const url = new URL(location.href);
+          const linked = url.searchParams.get('c');
+          if (linked && linked !== id) {
+            url.searchParams.delete('c');
+            history.replaceState(null, '', url.pathname + url.search + url.hash);
+          }
+        } catch (_) {}
+      }
       if (switchExplicit && !state.panes.includes(id)) state.pinnedPanes.add(id);
       addPane(id);
       renderPanes();
@@ -2038,10 +2141,10 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
         }
         applyHarnessTheme(state.selectedHarness);
         composerInput.disabled = false;
-        document.getElementById('sendBtn').disabled = sendingTurn;
+        updateComposerAction();
 
         document.getElementById('convTitle').textContent = detail.summary.title;
-        const summaryTheme = HARNESS_COLORS[detail.summary.harness] || HARNESS_COLORS.claude;
+        const summaryTheme = harnessTheme(detail.summary.harness);
         document.getElementById('headerHarnessDot').style.background = summaryTheme.accent;
         document.getElementById('convSubtitle').textContent =
           `${summaryTheme.short}${accountTag(detail.summary.profile)} · ${String(state.selectedWorkdir).split('/').filter(Boolean).pop() || state.selectedWorkdir}`;
@@ -2051,22 +2154,26 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
         const rText = document.getElementById('runningTaskText');
         const totalBusy = state.conversations.filter(c => c.status === 'busy').length;
         const activeSprint = (state.sprints || []).find(s => s.status === 'running');
-        if (activeSprint) {
+        const scheduledGoal = state.goals.find(g => ['running', 'queued'].includes(g.status));
+        if (activeSprint && !['busy', 'unknown'].includes(detail.summary.status)) {
           rBar.classList.remove('hidden');
           const passed = activeSprint.steps.filter(s => s.status === 'passed').length;
           rText.textContent = `🏃 Sprint: ${activeSprint.title} (${passed}/${activeSprint.steps.length})`;
-        } else if (detail.summary.status === 'busy' || totalBusy > 0) {
+        } else if (['busy', 'unknown'].includes(detail.summary.status) || totalBusy > 0) {
           rBar.classList.remove('hidden');
-          if (detail.summary.status === 'busy') {
-            rText.textContent = `1 running task`;
+          if (['busy', 'unknown'].includes(detail.summary.status)) {
+            rText.textContent = detail.summary.can_stop ? 'Working in MoE Deck' : (detail.summary.running_task_label || `Running in ${summaryTheme.short}. Control this turn there.`);
           } else {
             rText.textContent = `${totalBusy} running task${totalBusy > 1 ? 's' : ''} in background`;
           }
+        } else if (scheduledGoal) {
+          rBar.classList.remove('hidden');
+          rText.textContent = `Scheduled work: ${scheduledGoal.title}`;
         } else {
           rBar.classList.add('hidden');
         }
         const stopBtn = document.getElementById('runningStopBtn');
-        if (stopBtn) stopBtn.style.display = detail.summary.status === 'busy' ? 'inline-block' : 'none';
+        if (stopBtn) stopBtn.style.display = detail.summary.status === 'busy' && detail.summary.can_stop ? 'inline-block' : 'none';
 
         // Update top-right 1-Tap Quick-Flip pill
         const flipDot = document.getElementById('flipDot');
@@ -2074,7 +2181,7 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
         const prevConv = state.conversations.find(c => c.id === state.previousId && c.id !== state.activeId)
           || state.conversations.find(c => c.id !== state.activeId);
         if (prevConv) {
-          const prevTheme = HARNESS_COLORS[prevConv.harness] || HARNESS_COLORS.claude;
+          const prevTheme = harnessTheme(prevConv.harness);
           flipDot.style.background = prevTheme.accent;
           flipLabel.textContent = `↔ ${prevTheme.short}`;
           document.getElementById('quickFlipBtn').setAttribute('aria-label', `Return to ${prevConv.title}`);
@@ -2186,10 +2293,10 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
               <span style="font-size:11px;color:var(--text-muted)">Cross-check across models</span>
             </div>
             <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:7px">
-              ${installedHarnessIds().map(h => `<button class="filter-chip" onclick="triggerSecondOpinion('${h}', 'review-diff')">🔍 ${HARNESS_COLORS[h].short} Audit Diff</button>`).join('')}
+              ${installedHarnessIds().map(h => `<button class="filter-chip" onclick="triggerSecondOpinion('${h}', 'review-diff')">🔍 ${harnessTheme(h).short} Audit Diff</button>`).join('')}
             </div>
             <div style="display:flex;gap:6px;flex-wrap:wrap">
-              ${installedHarnessIds().map(h => `<button class="filter-chip" onclick="triggerSecondOpinion('${h}', 'arena')">⚔️ Race ${HARNESS_COLORS[h].short}</button>`).join('')}
+              ${installedHarnessIds().map(h => `<button class="filter-chip" onclick="triggerSecondOpinion('${h}', 'arena')">⚔️ Race ${harnessTheme(h).short}</button>`).join('')}
             </div>
           </div>
 
@@ -2205,7 +2312,7 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
             <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
               ${installedHarnessIds().map(h => {
                 const isSelected = swarmTarget() === h;
-                const hc = HARNESS_COLORS[h] || HARNESS_COLORS.claude;
+                const hc = harnessTheme(h);
                 return `<button class="filter-chip ${isSelected ? 'active' : ''}" style="${isSelected ? `background:${hc.soft};border-color:${hc.accent};color:${hc.accent}` : ''}" onclick="setSwarmTarget('${h}')">${hc.short}</button>`;
               }).join('')}
             </div>
@@ -2642,6 +2749,10 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
       state.selectedWorkdir = workdir;
       localStorage.setItem('helm_last_workdir', workdir);
       closeOverlays();
+      if (!targetId) {
+        renderDraftHeader();
+        renderMessages([], true);
+      }
       await fetchState();
     };
 
@@ -2684,7 +2795,7 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
       const strip = document.getElementById('bounceStrip');
       const topConvs = state.conversations.slice(0, 6);
       replaceChangedHtml(strip, topConvs.map(c => {
-        const hc = HARNESS_COLORS[c.harness] || HARNESS_COLORS.claude;
+        const hc = harnessTheme(c.harness);
         const isActive = c.id === state.activeId;
         const hasApproval = Boolean(c.pending_approval);
         const busyClass = (c.status === 'busy' || hasApproval) ? 'busy' : '';
@@ -2832,7 +2943,7 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
         return;
       }
       replaceChangedHtml(container, filtered.map(c => {
-        const hc = HARNESS_COLORS[c.harness] || HARNESS_COLORS.claude;
+        const hc = harnessTheme(c.harness);
         const isActive = c.id === state.activeId;
         const activity = conversationActivity(c);
         const hasApproval = activity === 'needs';
@@ -2891,7 +3002,7 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
     window.toggleArchivedView = function() {
       state.showArchived = !state.showArchived;
       renderDrawerList();
-      document.getElementById('convList').scrollTop = 0;
+      document.querySelector('.drawer-scroll').scrollTop = 0;
     };
     window.openConvActions = function(id) {
       const c = state.conversations.find(c => c.id === id);
@@ -2926,7 +3037,7 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
     function renderMessages(messages, forceScrollBottom) {
       if (!forceScrollBottom && deferRender(refreshMessages)) return;
       const truncated = (state.detail && state.detail.truncated) || 0;
-      const tailText = messages.length ? JSON.stringify(messages[messages.length - 1]) : '';
+      const tailText = JSON.stringify(messages);
       if (!forceScrollBottom && state.lastRenderedId === state.activeId && messages.length === state.lastMessageCount && tailText === state.lastTailText && truncated === state.lastTruncated) {
         state.renderedSummary = state.detail?.summary || null;
         markConversationSeen();
@@ -2981,11 +3092,11 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
         </div>` : '';
 
       const emptyStateHtml = messages.length === 0 ? `
-        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:55vh;gap:12px;padding:0 30px;text-align:center;color:var(--text-muted)">
+        <div class="empty-state" style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0 30px;text-align:center;color:var(--text-muted)">
           <img class="empty-mark" src="/icon.svg" alt="" aria-hidden="true" width="44" height="44" style="border-radius:11px">
           <div style="font-weight:750;color:var(--text);font-size:16px">What are we working on?</div>
-          <div style="font-size:12.5px;max-width:310px;line-height:1.55">Choose a harness and model below, then describe what you want to do. Your projects and conversations stay together.</div>
-          <div class="filter-chip" style="margin-top:4px;cursor:pointer" onclick="document.getElementById('composerInput').focus()">Start typing →</div>
+          <div style="font-size:12.5px;max-width:310px;line-height:1.55">Harness and model are below. Type your first message to start.</div>
+          <button type="button" class="filter-chip" style="margin-top:4px;cursor:pointer" onclick="openProjectSheet()">${escapeHtml(draftProjectLabel())} · change project</button>
         </div>` : '';
 
       scrollEl.innerHTML = emptyStateHtml + swarmBannerHtml + historyHtml + messages.map((m, idx) => renderTurn(m, idx)).join('');
@@ -3009,46 +3120,87 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
       return out;
     }
 
+    // Same phrases the status pills use: a sentence, not the raw tool call.
+    function plainStep(block) {
+      const status = String(block.status || '');
+      if (status === 'waiting_approval') return 'Needs your OK';
+      if (status === 'denied') return 'Did not run';
+      if (status === 'error') return 'That step failed';
+      if (status === 'unknown') return 'Status unavailable';
+      if (status === 'interrupted') return 'Interrupted';
+      const name = String(block.name || '').toLowerCase();
+      const summary = String(block.summary || '').trim();
+      const has = (...words) => words.some(w => name.includes(w));
+      const clip = (s) => s.length > 44 ? s.slice(0, 43) + '…' : s;
+      if (has('bash', 'shell', 'exec', 'command')) {
+        if (!summary) return status === 'done' ? 'Ran a command' : 'Running a command';
+        const first = summary.split(/\s+/)[0] || '';
+        if (/^[A-Z][A-Za-z]+$/.test(first)) return clip((status === 'done' ? 'Completed: ' : '') + summary);
+        const command = summary.replace(/^cd\s+\S+\s+&&\s+/, '');
+        const words = command.split(/\s+/).filter(w => !w.includes('=')).slice(0, 2).join(' ');
+        return words ? clip((status === 'done' ? 'Ran ' : 'Running ') + words) : (status === 'done' ? 'Ran a command' : 'Running a command');
+      }
+      const file = summary.includes('/') && !/\s/.test(summary)
+        ? summary.split('/').filter(Boolean).pop()
+        : summary;
+      if (has('edit', 'write', 'patch', 'replace')) return file ? clip((status === 'done' ? 'Edited ' : 'Editing ') + file) : (status === 'done' ? 'Edited a file' : 'Editing a file');
+      if (has('read', 'view')) return file ? clip((status === 'done' ? 'Read ' : 'Reading ') + file) : (status === 'done' ? 'Read a file' : 'Reading a file');
+      if (has('grep', 'glob', 'search', 'find', 'list')) return file ? clip((status === 'done' ? 'Searched ' : 'Searching ') + file) : (status === 'done' ? 'Searched' : 'Searching');
+      if (has('web', 'fetch', 'browse')) return status === 'done' ? 'Browsed' : 'Browsing';
+      if (has('agent', 'task')) return status === 'done' ? 'Delegated' : 'Delegating';
+      if (!block.name) return 'Working';
+      return clip((status === 'done' ? 'Used ' : 'Using ') + block.name);
+    }
+
     function renderTurn(m, idx, readOnly = false) {
       const imgsHtml = (m.images || []).map(url =>
         `<img class="msg-img-card" src="${escapeAttr(url)}" onclick="openLightbox('${escapeAttr(url)}')" />`
       ).join('');
       const images = imgsHtml ? `<div class="msg-images">${imgsHtml}</div>` : '';
       if (m.role === 'user') {
-        return `<div class="t-turn msg-user-turn"><div class="t-user"><span class="t-glyph">❯</span><span>${escapeHtml(m.text)}</span></div>${images}</div>`;
+        return `<div class="t-turn msg-user-turn"><div class="t-user">${escapeHtml(m.text)}</div>${images}</div>`;
       }
-      const hc = HARNESS_COLORS[m.harness] || HARNESS_COLORS.claude;
-      const key = m.id || `idx-${idx}`;
-      const lines = turnBlocks(m).map((b, bi) => {
-        const bkey = `${key}:${bi}`;
-        const open = state.expandedTools.has(bkey) ? ' open' : '';
-        const toggle = `onclick="toggleBlock(this, '${escapeAttr(bkey)}')"`;
+      const hc = harnessTheme(m.harness);
+      const blocks = turnBlocks(m);
+      const texts = [];
+      const steps = [];
+      const disclosureKey = `${state.activeId}:${m.id || idx}`;
+      const disclosureAttrs = key => `data-disclosure="${escapeAttr(key)}"${state.expandedTools.has(key) ? ' open' : ''}`;
+      let latestTool = null;
+      blocks.forEach(b => {
         if (b.type === 'text') {
-          return `<div class="t-line t-text"><span class="t-glyph">●</span><div class="t-body prose">${renderMarkdown(b.text)}</div></div>`;
+          texts.push(`<div class="t-line t-text"><div class="t-body prose">${renderMarkdown(b.text)}</div></div>`);
+        } else if (b.type === 'thinking' && b.text && b.text.trim()) {
+          steps.push(`<div class="step"><div class="step-name">Reasoning</div><div class="step-raw">${escapeHtml(b.text)}</div></div>`);
+        } else if (b.type === 'tool') {
+          latestTool = b;
+          const raw = [b.summary, b.input && b.input !== b.summary ? b.input : '', b.output || ''].filter(Boolean).join('\n\n');
+          steps.push(`<details class="step" ${disclosureAttrs(disclosureKey + ':tool:' + (b.id || steps.length))}><summary class="step-name">${escapeHtml(plainStep(b))}</summary>${raw ? `<pre class="step-raw">${escapeHtml(raw)}</pre>` : ''}</details>`);
         }
-        if (b.type === 'thinking') {
-          const words = b.text.trim().split(/\s+/).length;
-          return `<div class="t-line t-think${open}" ${toggle} role="button" tabindex="0" aria-expanded="${open ? 'true' : 'false'}"><span class="t-glyph">✻</span><div class="t-body">Thinking · ${words} words<div class="t-detail">${escapeHtml(b.text)}</div></div></div>`;
-        }
-        const status = String(b.status || 'done').replace(/[^a-z_]/g, '');
-        const firstOut = (b.output || '').split('\n').find(l => l.trim()) || '';
-        const peek = firstOut ? `<div class="t-peek">${escapeHtml(firstOut)}</div>` : '';
-        const input = b.input && b.input !== b.summary ? `<div class="t-label">input</div><pre>${escapeHtml(b.input)}</pre>` : '';
-        const output = b.output ? `<div class="t-label">output</div><pre class="t-out">${escapeHtml(b.output)}</pre>` : '';
-        const detail = (input + output) || '<div class="t-label">No output recorded for this step. Load earlier messages for full history.</div>';
-        return `<div class="t-line t-tool ${status}${open}" ${toggle} role="button" tabindex="0" aria-expanded="${open ? 'true' : 'false'}"><span class="t-glyph">●</span><div class="t-body"><span class="t-tool-name">${escapeHtml(b.name)}</span><span class="t-tool-arg">(${escapeHtml(b.summary)})</span>${peek}<div class="t-detail">${detail}</div></div></div>`;
-      }).join('');
-      const working = m.streaming ? `<div class="t-line t-working"><span class="t-glyph">✻</span><div class="t-body">Working…</div></div>` : '';
+      });
+      const status = m.streaming
+        ? `<div class="status-line">${latestTool && latestTool.status === 'running' ? escapeHtml(plainStep(latestTool)) : 'Working'}</div>`
+        : '';
+      const disclosure = steps.length
+        ? `<details class="steps" ${disclosureAttrs(disclosureKey + ':steps')}><summary>${steps.length} step${steps.length === 1 ? '' : 's'}${m.streaming ? ' · working' : ''}</summary>${steps.join('')}${state.fullHistoryId !== state.activeId && (m.blocks || []).some(b => b.type === 'tool' && !b.input && !b.output) ? '<button class="filter-chip" onclick="loadFullHistory()">Load full step details</button>' : ''}</details>`
+        : '';
       return `
         <div class="t-turn msg-assistant">
-          ${lines}${working}${images}
-          ${m.streaming && !lines ? '' : `<div class="t-meta">
-            <span style="color:${hc.accent}">${escapeHtml(hc.short)}</span>${m.model ? `<span>${escapeHtml(m.model)}</span>` : ''}
-            ${readOnly ? '' : `<button onclick="copyText(${idx})" title="Copy">copy</button>
-            <button onclick="speakText(${idx})" title="Read aloud">speak</button>`}
+          ${status}${texts.join('')}${disclosure}${images}
+          ${m.streaming && !texts.length && !steps.length ? '' : `<div class="t-meta">
+            <span class="harness-word">${escapeHtml(hc.short)}</span>${m.model ? `<span>${escapeHtml(m.model)}</span>` : ''}
+            ${readOnly ? '' : `<button onclick="copyText(${idx})" title="Copy">Copy</button>
+            <button onclick="speakText(${idx})" title="Read aloud">Speak</button>`}
           </div>`}
         </div>`;
     }
+
+    document.addEventListener('toggle', e => {
+      const el = e.target;
+      const key = el.dataset?.disclosure;
+      if (!key || !document.contains(el)) return;
+      if (el.open) state.expandedTools.add(key); else state.expandedTools.delete(key);
+    }, true);
 
     document.addEventListener('keydown', e => {
       const line = e.target.closest && e.target.closest('.t-line[role=button]');
@@ -3128,13 +3280,13 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
 
     function visiblePanes() {
       if (state.activeId && !state.panes.includes(state.activeId)) addPane(state.activeId);
-      if (isPhone() || state.zoomed) return state.activeId ? [state.activeId] : [];
+      if (isPhone() || state.zoomed || state.draftNew) return state.activeId ? [state.activeId] : [];
       return state.panes.slice();
     }
 
     function paneHeadHtml(id, idx) {
       const c = state.conversations.find(x => x.id === id);
-      const hc = HARNESS_COLORS[c?.harness] || HARNESS_COLORS.claude;
+      const hc = harnessTheme(c?.harness);
       const project = c ? String(c.workdir || '').split('/').filter(Boolean).pop() || '' : '';
       const status = c?.pending_approval ? '<span style="color:var(--t-err)">approval</span>'
         : c?.status === 'busy' ? '<span style="color:var(--t-run)">working</span>' : '';
@@ -3151,7 +3303,14 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
       const grid = document.getElementById('paneGrid');
       const chat = document.getElementById('chatScroll');
       const ids = visiblePanes();
-      if (!ids.length) { if (chat.parentElement !== grid) grid.replaceChildren(chat); renderTmuxBar(); return; }
+      if (!ids.length) {
+        // The grid now holds only the chat; the next pane layout must rebuild.
+        paneLayoutKey = '';
+        grid.dataset.count = '1';
+        if (chat.parentElement !== grid) grid.replaceChildren(chat);
+        renderTmuxBar();
+        return;
+      }
       const key = JSON.stringify([ids, state.activeId, state.zoomed]);
       if (key !== paneLayoutKey) {
         paneLayoutKey = key;
@@ -3230,7 +3389,7 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
       const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       const wins = state.panes.map((id, i) => {
         const c = state.conversations.find(x => x.id === id);
-        const hc = HARNESS_COLORS[c?.harness] || HARNESS_COLORS.claude;
+        const hc = harnessTheme(c?.harness);
         const active = id === state.activeId;
         const cls = ['tmux-win', active ? 'active' : '', c?.status === 'busy' ? 'busy' : '', c?.pending_approval ? 'approval' : ''].join(' ');
         const mark = active ? '*' : id === state.previousId ? '-' : '';
@@ -3358,7 +3517,6 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
         <div class="quick-row"><span>Text size</span><div class="quick-choices">
           ${[['12px', 'S'], ['13.5px', 'M'], ['15px', 'L']].map(([v, l]) => chip(size === v, l, `setTermFont('${v}')`)).join('')}
         </div></div>
-        <div class="quick-row"><span>Walkie-talkie mic</span><div class="quick-choices">${chip(state.walkieTalkie, state.walkieTalkie ? 'on' : 'off', 'toggleWalkieTalkieMode();openQuickSettings()')}</div></div>
         <div class="quick-row"><span>Alerts when a turn finishes</span><div class="quick-choices">${chip(typeof Notification !== 'undefined' && Notification.permission === 'granted', 'enable', 'enableNotifications()')}</div></div>
         <div class="quick-row"><span>Window bar</span><div class="quick-choices">${chip(state.tmuxBar, state.tmuxBar ? 'on' : 'off', 'toggleTmuxBar()')}</div></div>
         <div class="quick-row"><span>Panes</span><div class="quick-choices">${chip(false, 'reset layout', 'resetPanes()')}</div></div>
@@ -3549,7 +3707,6 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
         <div id="helmUpdate" role="status"></div>
         <button class="settings-secondary" id="checkUpdateBtn" onclick="checkHelmUpdate(this)">Check for updates</button></section>
         <section class="settings-section"><h2>Voice & permissions</h2><div class="settings-group">
-          <label class="settings-row"><span class="settings-row-label">Walkie-talkie<small>Send voice input when you release the mic</small></span><input type="checkbox" ${state.walkieTalkie ? 'checked' : ''} onchange="toggleWalkieTalkieMode()" /></label>
           <label class="settings-row"><span class="settings-row-label">Task sounds</span><input type="checkbox" ${state.audioChimes ? 'checked' : ''} onchange="state.audioChimes=this.checked;localStorage.setItem('helm_chimes',this.checked)" /></label>
           <label class="settings-row"><span class="settings-row-label">Permission mode</span><select onchange="setSafetyMode(this.value)">${['safe','standard','yolo'].map(m=>`<option ${m===state.safetyMode?'selected':''} value="${m}">${m}</option>`).join('')}</select></label>
         </div><p class="settings-help">Yolo bypasses approvals and sandbox protections. Use Standard for everyday work.</p></section>`;
@@ -3565,13 +3722,13 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
       const config = settingsData.settings.harnesses[id] || {enabled:!!h?.available, models:[]};
       const catalog = settingsData.catalogs[id];
       settingsHarnessId = id;
-      const source = id==='claude' ? 'Stable CLI aliases · version selected by Claude' : id==='codex' ? 'Codex local catalog · primary account' : id==='keel' ? 'Local & OpenAI-compatible providers · built-in local models plus your own endpoints' : catalog?.updated_at ? `Native catalog · ${new Date(catalog.updated_at).toLocaleString()}` : 'Configured default · no discovered catalog';
+      const source = id==='claude' ? 'Stable CLI aliases · version selected by Claude' : id==='codex' ? 'Codex local catalog · primary account' : id==='cursor' ? 'Cursor Agent catalog · `cursor-agent models`' : id==='grok' ? 'Grok Build catalog · `grok models`' : id==='keel' ? 'Local & OpenAI-compatible providers · built-in local models plus your own endpoints' : catalog?.updated_at ? `Native catalog · ${new Date(catalog.updated_at).toLocaleString()}` : 'Configured default · no discovered catalog';
       document.getElementById('sheetContent').innerHTML = settingsHeader(h.name,true) + `
         <label class="settings-row"><span class="settings-row-label">Show in composer<small>${h.available?'Installed on this computer':'Install its CLI on the computer first'}</small></span><input id="harnessEnabled" type="checkbox" ${config.enabled?'checked':''} /></label>
         <section class="settings-section"><h2>Accounts</h2><p class="settings-help">${id==='codex'?'Model discovery currently uses the primary account. Other accounts may have different access.':''}</p>${accountRowHtml(h)}</section>
         <section class="settings-section"><h2>Models</h2><p class="settings-help">${escapeHtml(source)}</p>${catalog?.error?`<p class="settings-help" role="status">${escapeHtml(catalog.error)}</p>`:''}
           <div class="settings-models">${h.models.map(m=>`<div class="settings-model"><strong>${escapeHtml(m.label)}</strong><small>${escapeHtml(m.id)}${m.base_url?` · ${escapeHtml(m.base_url)}`:''}${m.thinking===false?' · no thinking':''}</small></div>`).join('')}</div>
-          <h3>Custom model choices</h3><p class="settings-help">Use exact IDs from your provider. They pass to the harness unchanged. The configured default preserves that harness’s settings.${id==='keel'?' For Keel, set a base URL for any OpenAI-compatible <code>/v1</code> endpoint; the API key stays in an environment variable on the MoE Deck machine.':''}</p>
+          <h3>Custom model choices</h3><p class="settings-help">Use exact IDs from your provider. They pass to the harness unchanged. The configured default preserves that harness’s settings.${id==='keel'?' For Keel, set a base URL for any OpenAI-compatible <code>/v1</code> endpoint; the API key stays in an environment variable on the MoE Deck machine.':''}${id==='grok'?' The xAI key stays in <code>XAI_API_KEY</code> on this computer. MoE Deck never puts it on the grok command. Headless Grok cannot pause for a phone approval.':''}</p>
           <div id="customModels"></div><button class="settings-secondary" onclick="addCustomModelRow()">＋ Add model</button>
         </section>
         <p id="settingsSaveStatus" class="settings-help" role="status"></p>
@@ -3672,7 +3829,7 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
         ${state.harnesses.filter(h => h.available).map(h => {
           const isSel = h.id === state.selectedHarness;
           return `
-            <button type="button" aria-pressed="${isSel}" class="sheet-option ${isSel ? 'selected' : ''}" onclick="pickHarness('${escapeAttr(h.id)}')" style="${isSel ? 'background:#2b2b2e' : ''}">
+            <button type="button" aria-pressed="${isSel}" class="sheet-option ${isSel ? 'selected' : ''}" onclick="pickHarness('${escapeAttr(h.id)}')" >
               <div style="display:flex;align-items:center;gap:10px">
                 <span class="bounce-dot" style="width:10px;height:10px;background:${h.accent}"></span>
                 <div>
@@ -3939,6 +4096,7 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
         state.selectedEffort = h.models[0].default_effort || 'medium';
       }
       applyHarnessTheme(harnessId);
+      if (!state.activeId) renderDraftHeader();
       closeOverlays();
     };
 
@@ -3997,15 +4155,15 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
     };
 
     // Running Tasks Sheet
-    document.getElementById('runningTaskBar').addEventListener('click', () => {
+    window.openBackgroundWork = function() {
       const busyConvs = state.conversations.filter(c => c.status === 'busy');
       const content = document.getElementById('sheetContent');
       content.innerHTML = `
         <div class="sheet-title">
-          <span>Running Tasks (${busyConvs.length})</span>
+          <span>Background work</span>
         </div>
         ${busyConvs.map(c => {
-          const hc = HARNESS_COLORS[c.harness] || HARNESS_COLORS.claude;
+          const hc = harnessTheme(c.harness);
           return `
             <div class="sheet-option" style="cursor:default">
               <div style="min-width:0;padding-right:8px">
@@ -4017,17 +4175,39 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
                   ${escapeHtml(c.running_task_label || 'Running in background')}
                 </div>
               </div>
-              <button class="new-thread-btn" style="background:#ef4444;color:#fff;flex-shrink:0" onclick="stopConvTask('${escapeAttr(c.id)}')">Stop</button>
+              ${c.can_stop ? `<button class="new-thread-btn" style="background:#ef4444;color:#fff;flex-shrink:0" onclick="stopConvTask('${escapeAttr(c.id)}')">Stop</button>` : `<span class="step-name">Control in ${escapeHtml(hc.short)}</span>`}
             </div>
           `;
-        }).join('') || '<div style="color:var(--text-muted)">No background tasks running.</div>'}
+        }).join('') || '<p class="settings-help">No chat turns running.</p>'}
+        ${state.goals.length ? '<p class="settings-help">Goals can schedule new turns. Pausing stops future scheduling; use Stop for a turn already running.</p>' : ''}
+        ${state.goals.map(g => `<div class="sheet-option" style="cursor:default;gap:12px">
+          <div style="min-width:0"><div>${escapeHtml(g.title)}</div><div class="settings-help">${escapeHtml(g.status)} · ${g.subgoal_count} task${g.subgoal_count === 1 ? '' : 's'}</div></div>
+          ${['running','queued'].includes(g.status) ? `<button class="filter-chip" onclick="pauseScheduledGoal('${escapeAttr(g.id)}', this)">Pause scheduling</button>` : ''}
+        </div>`).join('')}
+        ${(state.sprints || []).map(s => `<div class="sheet-option" style="cursor:default;gap:12px">
+          <div style="min-width:0"><div>${escapeHtml(s.title)}</div><div class="settings-help">Sprint · ${escapeHtml(s.status)}</div></div>
+          ${['running','queued'].includes(s.status) ? `<button class="filter-chip" onclick="cancelSprint('${escapeAttr(s.id)}')">Cancel sprint</button>` : ''}
+        </div>`).join('')}
       `;
       openSheet();
-    });
+    };
+    document.getElementById('runningTaskBar').addEventListener('click', openBackgroundWork);
+    window.pauseScheduledGoal = async function(id, button) {
+      button.disabled = true;
+      try {
+        await apiRequest(`/api/goals/${encodeURIComponent(id)}/pause`, jsonRequest('POST', {}));
+        await fetchState();
+        openBackgroundWork();
+      } catch (error) {
+        button.disabled = false;
+        showToast(error.message || 'Could not pause this goal.');
+      }
+    };
 
     window.stopConvTask = async function(id) {
       try {
-        await apiRequest(`/api/conversations/${encodeURIComponent(id)}/stop`, jsonRequest('POST', {}));
+        const result = await apiRequest(`/api/conversations/${encodeURIComponent(id)}/stop`, jsonRequest('POST', {}));
+        if (!result.stopped) throw Error('No running turn was stopped.');
         closeOverlays();
         await fetchState();
       } catch (err) { showToast(err.message || 'Could not stop this turn.'); }
@@ -4082,13 +4262,148 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
       if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus(); }
     });
 
-    document.querySelectorAll('#drawerFilters .filter-chip[data-filter]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        document.querySelectorAll('#drawerFilters .filter-chip[data-filter]').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        state.drawerFilter = btn.dataset.filter || 'all';
-        renderDrawerList();
+    // Live agents: one dot per agent on its harness chip, one pill per agent.
+    // Colour says whose it is; the dot's shape says how it's going.
+    const AGENT_SWATCHES = ['#D97757', '#F59E0B', '#22C55E', '#10A37F', '#06B6D4', '#4F8FF7', '#A855F7', '#EC4899'];
+    const AGENT_PILLS_SHOWN = 4;
+    const AGENT_CHIP_DOTS = 5;
+    const AGENT_REFRESH_MS = 8000;
+    const AGENT_LONG_PRESS_MS = 500;
+    let agentReport = { agents: [], harnesses: [] };
+    let agentPillsExpanded = false;
+    let agentLongPressed = false;
+    let agentPressTimer = null;
+
+    function agentColor(a) {
+      if (/^#[0-9a-fA-F]{6}$/.test(a.color || '')) return a.color;
+      return harnessTheme(a.harness).accent;
+    }
+    function agentDot(a) {
+      return `<span class="agent-dot ${escapeAttr(a.state)}" style="--agent:${agentColor(a)}"></span>`;
+    }
+    function agentAge(secs) {
+      if (secs == null || secs < 90) return 'now';
+      if (secs < 3600) return `${Math.round(secs / 60)}m`;
+      return `${Math.round(secs / 3600)}h`;
+    }
+    function agentPill(a) {
+      const urgent = a.needs_you || a.state === 'stuck';
+      const status = a.needs_you ? 'Your turn' : a.state === 'stuck' ? `Stuck? ${agentAge(a.silent_secs)}` : agentAge(a.silent_secs);
+      const doing = a.doing || { working: 'Active', stuck: 'No activity' }[a.state] || 'Waiting';
+      return `<button class="agent-pill" data-agent-id="${escapeAttr(a.id)}">
+        ${agentDot(a)}
+        <span class="agent-pill-name">${escapeHtml(a.label)}</span>
+        <span class="agent-pill-doing">${escapeHtml(doing)}</span>
+        <span class="agent-pill-state ${urgent ? 'urgent' : ''}">${escapeHtml(status)}</span>
+      </button>`;
+    }
+    function renderAgentStatus() {
+      const agents = agentReport.agents || [];
+      const filters = document.getElementById('drawerFilters');
+      filters.classList.toggle('has-agents', agents.length > 0);
+      const section = document.getElementById('agentsSection');
+      const shown = state.drawerFilter === 'all' ? agents : agents.filter(a => a.harness === state.drawerFilter);
+      section.hidden = shown.length === 0;
+      if (!shown.length) { section.innerHTML = ''; return; }
+      const visible = agentPillsExpanded ? shown : shown.slice(0, AGENT_PILLS_SHOWN);
+      const hiddenCount = shown.length - AGENT_PILLS_SHOWN;
+      section.innerHTML = `<div class="agents-heading">Running now · ${shown.length}</div>
+        ${visible.map(agentPill).join('')}
+        ${hiddenCount > 0 ? `<button class="agents-more" id="agentsMore">${agentPillsExpanded ? 'Show less' : `+${hiddenCount} more`}</button>` : ''}`;
+    }
+    async function refreshAgents() {
+      if (document.visibilityState !== 'visible') return;
+      try {
+        agentReport = await apiRequest('/api/agents');
+        renderAgentStatus();
+      } catch (_) { /* The next refresh tries again. */ }
+    }
+    function closeAgentColors() {
+      document.getElementById('agentSheet')?.remove();
+    }
+    function openAgentColors(id) {
+      const agent = (agentReport.agents || []).find(a => a.id === id);
+      if (!agent) return;
+      closeAgentColors();
+      let scope = 'task';
+      const sheet = document.createElement('div');
+      sheet.id = 'agentSheet';
+      sheet.className = 'agent-sheet-backdrop';
+      sheet.innerHTML = `<div class="agent-sheet" role="dialog" aria-label="Choose a colour">
+        <h3>${escapeHtml(agent.label)}</h3>
+        <div class="agent-sheet-scope">
+          <button class="filter-chip active" data-scope="task">This agent</button>
+          <button class="filter-chip" data-scope="repo">All of ${escapeHtml(agent.label)}</button>
+        </div>
+        <div class="agent-swatches">${AGENT_SWATCHES.map(c => `<button class="agent-swatch" data-color="${c}" style="background:${c}" aria-label="Colour ${c}"></button>`).join('')}</div>
+        <button class="agent-sheet-reset">Back to default</button>
+      </div>`;
+      const save = async (color) => {
+        try {
+          await apiRequest('/api/agents/color', jsonRequest('POST', { scope, key: scope === 'task' ? agent.id : agent.label, color }));
+          closeAgentColors();
+          await refreshAgents();
+        } catch (e) { showToast(e.message); }
+      };
+      sheet.addEventListener('click', (e) => {
+        if (e.target === sheet) return closeAgentColors();
+        const scopeBtn = e.target.closest('[data-scope]');
+        if (scopeBtn) {
+          scope = scopeBtn.dataset.scope;
+          sheet.querySelectorAll('[data-scope]').forEach(b => b.classList.toggle('active', b === scopeBtn));
+          return;
+        }
+        const swatch = e.target.closest('[data-color]');
+        if (swatch) return save(swatch.dataset.color);
+        if (e.target.closest('.agent-sheet-reset')) save(null);
       });
+      document.body.appendChild(sheet);
+    }
+    function cancelAgentPress() {
+      clearTimeout(agentPressTimer);
+      agentPressTimer = null;
+    }
+    {
+      const section = document.getElementById('agentsSection');
+      section.addEventListener('pointerdown', (e) => {
+        const pill = e.target.closest('.agent-pill');
+        if (!pill) return;
+        agentLongPressed = false;
+        const id = pill.dataset.agentId;
+        agentPressTimer = setTimeout(() => { agentLongPressed = true; openAgentColors(id); }, AGENT_LONG_PRESS_MS);
+      });
+      ['pointerup', 'pointercancel', 'pointerleave'].forEach(type => section.addEventListener(type, cancelAgentPress));
+      section.addEventListener('contextmenu', (e) => {
+        const pill = e.target.closest('.agent-pill');
+        if (!pill) return;
+        e.preventDefault();
+        cancelAgentPress();
+        agentLongPressed = true;
+        openAgentColors(pill.dataset.agentId);
+      });
+      section.addEventListener('click', (e) => {
+        if (e.target.closest('#agentsMore')) {
+          agentPillsExpanded = !agentPillsExpanded;
+          return renderAgentStatus();
+        }
+        const pill = e.target.closest('.agent-pill');
+        if (!pill) return;
+        if (agentLongPressed) { agentLongPressed = false; return; }
+        selectConvFromDrawer(pill.dataset.agentId);
+      });
+      setInterval(refreshAgents, AGENT_REFRESH_MS);
+      document.addEventListener('visibilitychange', refreshAgents);
+      refreshAgents();
+    }
+
+    document.getElementById('drawerFilters').addEventListener('click', (e) => {
+      const btn = e.target.closest('.filter-chip[data-filter]');
+      if (!btn) return;
+      document.querySelectorAll('#drawerFilters .filter-chip[data-filter]').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      state.drawerFilter = btn.dataset.filter || 'all';
+      renderDrawerList();
+      renderAgentStatus();
     });
 
     document.getElementById('drawerSearchInput').addEventListener('input', (e) => {
@@ -4096,89 +4411,103 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
       renderDrawerList();
     });
 
-    let creatingThread = false;
-    document.getElementById('newThreadBtn').addEventListener('click', () => openProjectSheet(true));
-    document.getElementById('headerTitleWrap').addEventListener('click', () => openProjectSheet(false));
+    document.getElementById('newThreadBtn').addEventListener('click', startNewChat);
+    document.getElementById('headerTitleWrap').addEventListener('click', () => openProjectSheet());
 
-    async function openProjectSheet(newThread) {
+    function draftProjectLabel() {
+      const w = state.selectedWorkdir;
+      if (!w || w === state.home) return 'No project yet';
+      return String(w).split('/').filter(Boolean).pop() || w;
+    }
+
+    function renderDraftHeader() {
+      const theme = harnessTheme(state.selectedHarness);
+      document.getElementById('convTitle').textContent = 'New chat';
+      document.getElementById('headerHarnessDot').style.background = theme.accent;
+      document.getElementById('convSubtitle').textContent = `${theme.short} · ${draftProjectLabel()}`;
+    }
+
+    // One tap: keep the current harness, model and project, show an empty
+    // chat and focus the composer. The first message creates the conversation.
+    function startNewChat() {
+      cancelVoiceRecording();
+      closeOverlays();
+      if (state.activeId) {
+        state.drafts.set(state.activeId, { text: composerInput.value, images: [...state.queuedImages] });
+        state.previousId = state.activeId;
+        localStorage.setItem('helm_prev_id', state.previousId);
+      }
+      const draft = state.drafts.get(null);
+      composerInput.value = draft?.text || '';
+      composerInput.style.height = 'auto';
+      state.queuedImages = draft?.images || [];
+      renderQueuedImages();
+      state.activeId = null;
+      state.draftNew = true;
+      state.detail = null;
+      localStorage.removeItem('helm_active_id');
+      detailRequest++;
+      applyHarnessTheme(state.selectedHarness);
+      composerInput.disabled = false;
+      updateComposerAction();
+      renderDraftHeader();
+      renderPanes();
+      renderDrawerList();
+      renderMessages([], true);
+      composerInput.focus();
+    }
+
+    async function openProjectSheet() {
       closeOverlays();
       const content = document.getElementById('sheetContent');
-      const title = newThread ? 'New conversation' : 'Choose project';
+      const title = 'Choose project';
       content.innerHTML = `<div class="sheet-title">${title}</div><p>Loading projects…</p>`;
       const version = openSheet();
       try {
-        const data = await apiRequest('/api/projects');
+        // Folders of recent conversations first, newest first; the server
+        // drops the ones that were renamed or deleted since.
+        const recentDirs = [...new Set(state.conversations.slice()
+          .sort((a, b) => convTime(b) - convTime(a))
+          .map(c => c.workdir).filter(Boolean))].slice(0, 30);
+        const data = await apiRequest(`/api/projects?recent=${encodeURIComponent(recentDirs.join('\n'))}`);
         if (version !== sheetVersion) return;
         const paths = [...new Set([
-          state.selectedWorkdir,
-          ...state.conversations.map(c => c.workdir),
+          ...(data.recent || []),
           ...(data.projects || []).map(p => p.workdir)
         ].filter(p => p && p !== state.home))];
-        const installed = state.harnesses.filter(h => h.available);
-        const selectedHarness = installed.find(h => h.id === state.selectedHarness) || installed[0];
         const workdir = state.selectedWorkdir === state.home ? '' : state.selectedWorkdir;
         content.innerHTML = `<div class="sheet-title">${title}</div>
           <form class="project-form" id="projectForm">
-            ${newThread ? `<label>Harness<select id="newHarnessSelect" required>${installed.map(h => `<option value="${escapeAttr(h.id)}" ${h.id === selectedHarness?.id ? 'selected' : ''}>${escapeHtml(h.name)}</option>`).join('')}</select></label>
-              <label>Model<select id="newModelSelect" required></select></label>` : ''}
             <label>Project<select id="projectSelect"><option value="">Choose a project…</option>${paths.map(p => `<option value="${escapeAttr(p)}" ${p === workdir ? 'selected' : ''}>${escapeHtml(p.split('/').filter(Boolean).pop())} · ${escapeHtml(p)}</option>`).join('')}</select></label>
             <label>Folder on this computer<input id="projectPathInput" value="${escapeAttr(workdir || '')}" placeholder="/path/to/your/project" required autocomplete="off" autocapitalize="none" spellcheck="false" /></label>
             <p role="alert" id="projectError"></p>
-            <button class="settings-save" type="submit" ${newThread && !installed.length ? 'disabled' : ''}>${newThread ? 'Start conversation' : 'Use project'}</button>
+            <button class="settings-save" type="submit">Use project</button>
           </form>
-          ${!newThread && state.detail ? '<button class="settings-secondary" id="threadDetailsBtn">Thread details, files & git</button>' : ''}`;
+          ${state.detail ? '<button class="settings-secondary" id="threadDetailsBtn">Thread details, files & git</button>' : ''}`;
         const projectSelect = document.getElementById('projectSelect');
         const pathInput = document.getElementById('projectPathInput');
-        projectSelect.addEventListener('change', () => { pathInput.value = projectSelect.value; });
-        if (newThread) {
-          const harnessSelect = document.getElementById('newHarnessSelect');
-          const modelSelect = document.getElementById('newModelSelect');
-          function updateModels() {
-            const harness = installed.find(h => h.id === harnessSelect.value);
-            modelSelect.innerHTML = (harness?.models || []).map(m => `<option value="${escapeAttr(m.id)}" ${harness.id === state.selectedHarness && m.id === state.selectedModel ? 'selected' : ''}>${escapeHtml(m.label)}</option>`).join('');
-          }
-          harnessSelect.addEventListener('change', updateModels);
-          updateModels();
-        }
+        // Picking from the list is the whole choice; no second tap needed.
+        projectSelect.addEventListener('change', () => {
+          pathInput.value = projectSelect.value;
+          if (projectSelect.value) document.getElementById('projectForm').requestSubmit();
+        });
         document.getElementById('threadDetailsBtn')?.addEventListener('click', openThreadInspector);
         document.getElementById('projectForm').addEventListener('submit', async e => {
           e.preventDefault();
-          if (creatingThread) return;
           const button = e.target.querySelector('[type=submit]');
           const error = document.getElementById('projectError');
           button.disabled = true;
           error.textContent = '';
           try {
-            if (!newThread) {
-              await pickWorkdir(pathInput.value.trim());
-              return;
-            }
-            creatingThread = true;
-            button.textContent = 'Starting…';
-            const harness = installed.find(h => h.id === document.getElementById('newHarnessSelect').value);
-            const model = harness.models.find(m => m.id === document.getElementById('newModelSelect').value);
-            const created = await apiRequest('/api/conversations', jsonRequest('POST', {
-              harness: harness.id, model: model.id,
-              effort: harness.id === state.selectedHarness && model.id === state.selectedModel
-                ? state.selectedEffort : model.default_effort,
-              workdir: pathInput.value.trim(),
-              profile: harness.id === state.selectedHarness ? state.selectedProfile : null
-            }));
-            if (version !== sheetVersion) return;
-            closeOverlays();
-            await loadConversation(created.id, true);
-            await fetchState();
-            if (state.activeId === created.id) composerInput.focus();
+            await pickWorkdir(pathInput.value.trim());
           } catch (err) {
             error.textContent = err.message || 'Could not open project.';
           } finally {
-            creatingThread = false;
             button.disabled = false;
-            button.textContent = newThread ? 'Start conversation' : 'Use project';
           }
         });
       } catch (err) {
-        if (version === sheetVersion) content.innerHTML = `<div class="sheet-title">${title}</div><p role="alert">${escapeHtml(err.message)}</p><button class="settings-secondary" onclick="openProjectSheet(${newThread})">Retry</button>`;
+        if (version === sheetVersion) content.innerHTML = `<div class="sheet-title">${title}</div><p role="alert">${escapeHtml(err.message)}</p><button class="settings-secondary" onclick="openProjectSheet()">Retry</button>`;
       }
     }
 
@@ -4266,7 +4595,7 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
           openSprintSheet();
         } else if (cmd === '/workdir ') {
           composerInput.value = '';
-          openProjectSheet(false);
+          openProjectSheet();
         } else if (cmd === '/diff' || cmd === '/review' || cmd === '/worktree' || cmd === '/bounce') {
           composerInput.value = '';
           openThreadInspector();
@@ -4325,9 +4654,26 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
     };
 
     let sendingTurn = false;
+    function updateComposerAction() {
+      const button = document.getElementById('sendBtn');
+      const summary = state.detail?.summary.id === state.activeId ? state.detail.summary : null;
+      const busy = ['busy', 'unknown'].includes(summary?.status);
+      const stop = busy && summary.can_stop;
+      button.disabled = sendingTurn || Boolean(state.activeId && !summary) || Boolean(busy && !summary.can_stop);
+      button.setAttribute('aria-label', sendingTurn ? 'Sending' : stop ? 'Stop' : summary?.status === 'unknown' ? 'Read-only history' : busy ? `Running in ${harnessTheme(summary.harness).short}` : 'Send');
+      button.title = busy && !summary.can_stop ? 'Control this turn in its native app' : stop ? 'Stop this turn' : 'Send';
+      button.innerHTML = stop
+        ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>'
+        : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M12 19V5m-7 7 7-7 7 7"/></svg>';
+    }
     async function sendMessage() {
       if (sendingTurn) return;
+      if (state.detail?.summary.id === state.activeId && ['busy', 'unknown'].includes(state.detail.summary.status)) {
+        showToast(state.detail.summary.can_stop ? 'Stop the current turn before sending another message.' : 'This turn is running in its native app. Control it there.');
+        return;
+      }
       if (/^\/(?:rc|remote-control)\s*$/i.test(composerInput.value.trim())) {
+        cancelVoiceRecording();
         composerInput.value = '';
         slashMenu.classList.remove('open');
         openClaudeRemoteControl(true);
@@ -4339,16 +4685,18 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
       }
       const text = composerInput.value.trim();
       if (!text && state.queuedImages.length === 0) return;
-      if (!state.activeId && (!state.selectedHarness || !state.selectedWorkdir || state.selectedWorkdir === state.home)) {
-        openProjectSheet(true);
+      if (!state.activeId && (!state.selectedWorkdir || state.selectedWorkdir === state.home)) {
+        showToast('Choose a project for this chat first.');
+        openProjectSheet();
         return;
       }
 
+      cancelVoiceRecording();
       if (text.startsWith('/workdir ')) {
         state.selectedWorkdir = text.replace('/workdir ', '').trim();
         localStorage.setItem('helm_last_workdir', state.selectedWorkdir);
         composerInput.value = '';
-        document.getElementById('convSubtitle').textContent = `${HARNESS_COLORS[state.selectedHarness]?.short} · ${state.selectedWorkdir}`;
+        document.getElementById('convSubtitle').textContent = `${harnessTheme(state.selectedHarness).short} · ${state.selectedWorkdir}`;
         return;
       }
 
@@ -4385,6 +4733,7 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
           const created = await createRes.json();
           if (!created.id) throw new Error('Could not create thread');
           targetId = created.id;
+          state.draftNew = false;
           if (!state.activeId) {
             state.activeId = targetId;
             localStorage.setItem('helm_active_id', targetId);
@@ -4442,8 +4791,7 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
         }
       } finally {
         sendingTurn = false;
-        sendBtn.disabled = Boolean(state.activeId && state.detail?.summary.id !== state.activeId);
-        sendBtn.setAttribute('aria-label', 'Send');
+        updateComposerAction();
       }
     }
 
@@ -4452,7 +4800,8 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
       if (!el) {
         el = document.createElement('div');
         el.id = 'helmToast';
-        el.style.cssText = 'position:fixed;left:50%;bottom:calc(96px + var(--safe-bottom));transform:translateX(-50%);background:#2a2a27;color:var(--text);border:1px solid var(--border-strong);border-radius:10px;padding:9px 14px;font-size:12.5px;z-index:9500;max-width:88vw;text-align:center;box-shadow:0 8px 24px rgba(0,0,0,.35)';
+        el.setAttribute('role', 'status');
+        el.style.cssText = 'position:fixed;left:50%;bottom:calc(96px + var(--safe-bottom));transform:translateX(-50%);background:var(--surface);color:var(--text);border:1px solid var(--border-strong);border-radius:10px;padding:9px 14px;font-size:12.5px;z-index:9500;max-width:88vw;text-align:center;box-shadow:0 8px 24px rgba(0,0,0,.35)';
         document.body.appendChild(el);
       }
       el.textContent = message;
@@ -4468,7 +4817,7 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
       if (state.activeId !== targetId) return null;
       const scrollEl = document.getElementById('chatScroll');
       if (!scrollEl) return null;
-      const accent = (HARNESS_COLORS[state.selectedHarness] || HARNESS_COLORS.claude).accent;
+      const accent = (harnessTheme(state.selectedHarness)).accent;
       const userDiv = document.createElement('div');
       userDiv.className = 't-turn';
       userDiv.id = 'helm-opt-user';
@@ -4638,12 +4987,12 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
           Paste or write a multi-step Markdown checklist. MoE Deck will autonomously execute each stage sequentially in the background.
         </div>
         <div style="display:flex;gap:6px;margin-bottom:8px">
-          <input id="sprintTitleInput" placeholder="Sprint title (e.g. Refactor shadow VFS)..." style="flex:1;background:#191917;border:1px solid var(--border-strong);border-radius:9px;padding:6px 9px;color:var(--text);font-size:12.5px" />
-          <select id="sprintHarnessSelect" style="background:#191917;border:1px solid var(--border-strong);border-radius:9px;padding:6px 9px;color:var(--text);font-size:12px">
-            ${installedHarnessIds().map(h => `<option value="${h}" ${h === 'claude' ? 'selected' : ''}>${HARNESS_COLORS[h].short}</option>`).join('')}
+          <input id="sprintTitleInput" placeholder="Sprint title (e.g. Refactor shadow VFS)..." style="flex:1;background:var(--surface);border:1px solid var(--border-strong);border-radius:9px;padding:6px 9px;color:var(--text);font-size:12.5px" />
+          <select id="sprintHarnessSelect" style="background:var(--surface);border:1px solid var(--border-strong);border-radius:9px;padding:6px 9px;color:var(--text);font-size:12px">
+            ${installedHarnessIds().map(h => `<option value="${h}" ${h === 'claude' ? 'selected' : ''}>${harnessTheme(h).short}</option>`).join('')}
           </select>
         </div>
-        <textarea id="sprintChecklistInput" placeholder="- [ ] Step 1: Write trait definitions&#10;- [ ] Step 2: Implement core logic&#10;- [ ] Step 3: Run cargo test and fix errors&#10;- [ ] Step 4: Verify formatting" style="width:100%;height:110px;background:#141412;border:1px solid var(--border-strong);border-radius:9px;padding:8px;font-family:ui-monospace,monospace;font-size:11.5px;color:var(--text);margin-bottom:8px" oninput="previewSprintSteps()"></textarea>
+        <textarea id="sprintChecklistInput" placeholder="- [ ] Step 1: Write trait definitions&#10;- [ ] Step 2: Implement core logic&#10;- [ ] Step 3: Run cargo test and fix errors&#10;- [ ] Step 4: Verify formatting" style="width:100%;height:110px;background:var(--surface-2);border:1px solid var(--border-strong);border-radius:9px;padding:8px;font-family:ui-monospace,monospace;font-size:11.5px;color:var(--text);margin-bottom:8px" oninput="previewSprintSteps()"></textarea>
         <div id="sprintPreviewSteps" style="margin-bottom:10px;font-size:11px;color:var(--text-muted)"></div>
         <button class="new-thread-btn" style="width:100%;padding:8px;font-size:12.5px;margin-bottom:14px" onclick="launchAutonomousSprint()">🚀 Launch Autonomous Sprint</button>
         ${(state.sprints || []).length > 0 ? `
@@ -4653,13 +5002,13 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
               const statusColor = sp.status === 'completed' ? '#4ade80' : sp.status === 'running' ? '#fbbf24' : sp.status === 'cancelled' ? '#94a3b8' : '#ef4444';
               const passedCount = sp.steps.filter(s => s.status === 'passed').length;
               return `
-                <div style="background:#191917;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:12px">
+                <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:12px">
                   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
                     <span style="font-weight:650">${escapeHtml(sp.title)}</span>
                     <span style="background:${statusColor}22;color:${statusColor};border-radius:4px;padding:1px 6px;font-size:10px;font-weight:600">${escapeHtml(sp.status.toUpperCase())} (${passedCount}/${sp.steps.length})</span>
                   </div>
                   <div style="display:flex;gap:5px;margin-top:6px">
-                    ${sp.status === 'running' ? `<button class="filter-chip" style="padding:2px 7px;font-size:10.5px;color:#f87171" onclick="cancelSprint('${escapeAttr(sp.id)}')">Cancel</button>` : ''}
+                    ${sp.status === 'running' ? `<button class="filter-chip" style="padding:2px 7px;font-size:10.5px;color:#f87171" onclick="cancelSprint('${escapeAttr(sp.id)}')">Cancel sprint</button>` : ''}
                     <button class="filter-chip" style="padding:2px 7px;font-size:10.5px" onclick="deleteSprint('${escapeAttr(sp.id)}')">Delete</button>
                   </div>
                 </div>
@@ -4735,18 +5084,28 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
     };
 
     window.cancelSprint = async function(id) {
-      await fetch(`/api/sprints/${encodeURIComponent(id)}/cancel`, { method: 'POST' });
-      await fetchState();
-      openSprintSheet();
+      try {
+        await apiRequest(`/api/sprints/${encodeURIComponent(id)}/cancel`, jsonRequest('POST', {}));
+        showToast('Sprint cancelled.');
+        await fetchState();
+        openSprintSheet();
+      } catch (error) { showToast(error.message || 'Could not cancel this sprint.'); }
     };
 
     window.deleteSprint = async function(id) {
-      await fetch(`/api/sprints/${encodeURIComponent(id)}`, { method: 'DELETE' });
-      await fetchState();
-      openSprintSheet();
+      try {
+        await apiRequest(`/api/sprints/${encodeURIComponent(id)}`, jsonRequest('DELETE', {}));
+        showToast('Sprint deleted.');
+        await fetchState();
+        openSprintSheet();
+      } catch (error) { showToast(error.message || 'Could not delete this sprint.'); }
     };
 
-    document.getElementById('sendBtn').addEventListener('click', sendMessage);
+    document.getElementById('sendBtn').addEventListener('click', () => {
+      const summary = state.detail?.summary.id === state.activeId ? state.detail.summary : null;
+      if (summary?.status === 'busy' && summary.can_stop) stopConvTask(state.activeId);
+      else sendMessage();
+    });
     composerInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey && window.innerWidth > 640) {
         e.preventDefault();
@@ -4820,198 +5179,89 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
       }
     }
 
-    window.toggleWalkieTalkieMode = function() {
-      state.walkieTalkie = !state.walkieTalkie;
-      localStorage.setItem('helm_walkie', state.walkieTalkie);
-      updateWalkieTalkieUI();
-    };
+    let dictationSession = null;
+    const micBtnEl = document.getElementById('micBtn');
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const canDictate = Boolean(SpeechRecognition && window.isSecureContext);
+    micBtnEl.style.display = canDictate ? '' : 'none';
 
-    function updateWalkieTalkieUI() {
-      const btn = document.getElementById('walkieTalkieToggleBtn');
-      const lbl = document.getElementById('walkieTalkieLabel');
-      if (btn && lbl) {
-        if (state.walkieTalkie) {
-          btn.classList.add('active');
-          lbl.textContent = '📻 Walkie ON';
-        } else {
-          btn.classList.remove('active');
-          lbl.textContent = '🎙️ Walkie';
-        }
-      }
+    function showDictationState(text) {
+      document.getElementById('voiceWaveBar').style.display = text ? 'flex' : 'none';
+      document.getElementById('voiceWaveStatus').textContent = text || '';
+      micBtnEl.classList.toggle('active', Boolean(text));
+      micBtnEl.setAttribute('aria-label', text ? 'Stop dictation' : 'Dictate message');
     }
-
-    let isRecording = false;
-    let activeSpeechRec = null;
-    let micMeterInterval = null;
+    function finishDictation(session) {
+      clearTimeout(session.timer);
+      if (dictationSession !== session) return;
+      dictationSession = null;
+      micBtnEl.disabled = false;
+      showDictationState('');
+    }
+    function cancelVoiceRecording() {
+      const session = dictationSession;
+      if (!session) return;
+      session.cancelled = true;
+      try { session.recognizer.abort(); } catch (_) {}
+      finishDictation(session);
+    }
+    window.cancelVoiceRecording = cancelVoiceRecording;
 
     function startVoiceRecording() {
-      if (isRecording) return;
-      if (!window.isSecureContext && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
-        showToast('Mic blocked by browser over insecure HTTP. Use HTTPS, Tailscale with cert, or keyboard mic.');
-        return;
-      }
-      const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
-      if (!SpeechRec) {
-        alert('Speech recognition not supported in this browser. Use mobile keyboard mic.');
-        return;
-      }
-
-      isRecording = true;
-      playAudioChime('start');
-
-      const waveBar = document.getElementById('voiceWaveBar');
-      const micBtn = document.getElementById('micBtn');
-      const levelFill = document.getElementById('voiceLevelFill');
-      const statusText = document.getElementById('voiceWaveStatus');
-      if (waveBar) waveBar.style.display = 'flex';
-      if (micBtn) micBtn.classList.add('active');
-      if (statusText) statusText.textContent = state.walkieTalkie ? '📻 Walkie: Speak & Release to Send…' : '🎙️ Listening…';
-
-      if (micMeterInterval) clearInterval(micMeterInterval);
-      micMeterInterval = setInterval(() => {
-        if (!isRecording) return;
-        const randomLevel = Math.floor(Math.random() * 70) + 20;
-        if (levelFill) levelFill.style.width = `${randomLevel}%`;
-      }, 100);
-
-      activeSpeechRec = new SpeechRec();
-      activeSpeechRec.continuous = false;
-      activeSpeechRec.interimResults = false;
-
-      activeSpeechRec.onresult = async (ev) => {
-        const transcript = ev.results[0][0].transcript;
-        await handleVoiceTranscript(transcript);
+      if (dictationSession || !canDictate || composerInput.disabled) return;
+      let recognizer;
+      try { recognizer = new SpeechRecognition(); }
+      catch (_) { showToast('Dictation is unavailable. Use your keyboard microphone.'); return; }
+      const session = { recognizer, targetId: state.activeId, started: false, delivered: false, cancelled: false };
+      dictationSession = session;
+      recognizer.continuous = false;
+      recognizer.interimResults = false;
+      showDictationState('Starting microphone…');
+      session.timer = setTimeout(() => {
+        if (dictationSession !== session) return;
+        cancelVoiceRecording();
+        showToast('Dictation timed out. Try again or use your keyboard microphone.');
+      }, 60000);
+      recognizer.onstart = () => {
+        if (session.cancelled || dictationSession !== session) { try { recognizer.abort(); } catch (_) {} return; }
+        session.started = true;
+        showDictationState('Listening…');
       };
-
-      activeSpeechRec.onerror = (err) => {
-        console.warn('Speech recognition error:', err);
-        if (err.error === 'not-allowed') {
-          showToast('Mic permission denied. Mobile browsers require HTTPS or localhost for audio.');
-        }
-        stopVoiceRecording(false);
-      };
-
-      activeSpeechRec.onend = () => {
-        stopVoiceRecording(false);
-      };
-
-      try {
-        activeSpeechRec.start();
-      } catch (err) {
-        stopVoiceRecording(false);
-      }
-    }
-
-    function stopVoiceRecording(triggerStop = true) {
-      if (!isRecording) return;
-      isRecording = false;
-      playAudioChime('stop');
-
-      if (micMeterInterval) {
-        clearInterval(micMeterInterval);
-        micMeterInterval = null;
-      }
-
-      const waveBar = document.getElementById('voiceWaveBar');
-      const micBtn = document.getElementById('micBtn');
-      if (waveBar) waveBar.style.display = 'none';
-      if (micBtn) micBtn.classList.remove('active');
-
-      if (triggerStop && activeSpeechRec) {
-        try { activeSpeechRec.stop(); } catch(_) {}
-      }
-      activeSpeechRec = null;
-    }
-
-    window.cancelVoiceRecording = function() {
-      if (activeSpeechRec) {
-        try { activeSpeechRec.abort(); } catch(_) {}
-      }
-      stopVoiceRecording(false);
-    };
-
-    async function handleVoiceTranscript(rawText) {
-      const text = (rawText || '').trim();
-      if (!text) return;
-
-      try {
-        const res = await fetch('/api/voice/transcribe', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ speech_text: text })
-        });
-        if (res.ok) {
-          const data = await res.json();
-          const intent = data.intent || { action: 'chat_prompt', payload: text };
-
-          if (intent.action === 'stop_task') {
-            if (state.activeId) window.stopConvTask(state.activeId);
-            return;
-          } else if (intent.action === 'fix_ci') {
-            const curWorkdir = state.selectedWorkdir || (state.detail ? state.detail.summary.workdir : '');
-            window.runPrAction(curWorkdir, 'fix-ci');
-            return;
-          } else if (intent.action === 'check_ci') {
-            document.getElementById('headerTitleWrap').click();
-            return;
-          } else if (intent.action === 'review_diff') {
-            const h = state.selectedHarness || 'codex';
-            window.triggerSecondOpinion(h, 'review-diff');
-            return;
-          } else if (intent.action === 'swarm_bounce') {
-            if (intent.payload && intent.payload.target_harness) {
-              state.swarmTargetHarness = intent.payload.target_harness;
-              const input = document.getElementById('swarmInstructionsInput');
-              if (input && intent.payload.custom_instructions) {
-                input.value = intent.payload.custom_instructions;
-              }
-              window.triggerSwarmBounce();
-              return;
-            }
-          }
-        }
-      } catch (e) {
-        console.warn('Voice intent parse error, falling back to direct prompt:', e);
-      }
-
-      if (state.walkieTalkie) {
-        composerInput.value = text;
-        sendMessage();
-      } else {
+      recognizer.onresult = event => {
+        if (session.cancelled || session.delivered || dictationSession !== session || state.activeId !== session.targetId) return;
+        const text = String(event.results?.[0]?.[0]?.transcript || '').trim();
+        if (!text) return;
+        session.delivered = true;
         composerInput.value = (composerInput.value ? composerInput.value + ' ' : '') + text;
         composerInput.dispatchEvent(new Event('input'));
         composerInput.focus();
-      }
+      };
+      recognizer.onerror = event => {
+        if (session.cancelled || dictationSession !== session) return;
+        session.cancelled = true;
+        try { recognizer.abort(); } catch (_) {}
+        finishDictation(session);
+        const message = event.error === 'not-allowed' ? 'Microphone permission was denied.'
+          : event.error === 'no-speech' ? 'No speech was heard. Try again or use your keyboard microphone.'
+          : 'Dictation failed. Try again or use your keyboard microphone.';
+        showToast(message);
+      };
+      recognizer.onend = () => {
+        if (dictationSession !== session) return;
+        finishDictation(session);
+        if (!session.cancelled && !session.delivered) showToast('No speech was heard. Try again or use your keyboard microphone.');
+      };
+      try { recognizer.start(); }
+      catch (_) { session.cancelled = true; try { recognizer.abort(); } catch (_) {} finishDictation(session); showToast('Could not start dictation. Use your keyboard microphone.'); }
     }
-
-    const micBtnEl = document.getElementById('micBtn');
-    let pressTimer = null;
-    let isPressAndHold = false;
-
-    micBtnEl.addEventListener('pointerdown', () => {
-      isPressAndHold = false;
-      pressTimer = setTimeout(() => {
-        isPressAndHold = true;
-        startVoiceRecording();
-      }, 220);
-    });
-
-    micBtnEl.addEventListener('pointerup', () => {
-      clearTimeout(pressTimer);
-      if (isPressAndHold) {
-        stopVoiceRecording(true);
-      } else {
-        if (isRecording) {
-          stopVoiceRecording(true);
-        } else {
-          startVoiceRecording();
-        }
-      }
-    });
-
-    micBtnEl.addEventListener('pointercancel', () => {
-      clearTimeout(pressTimer);
-      if (isRecording) stopVoiceRecording(false);
+    micBtnEl.addEventListener('click', () => {
+      const session = dictationSession;
+      if (!session) { startVoiceRecording(); return; }
+      if (!session.started) { cancelVoiceRecording(); return; }
+      showDictationState('Finishing dictation…');
+      micBtnEl.disabled = true;
+      try { session.recognizer.stop(); }
+      catch (_) { cancelVoiceRecording(); showToast('Could not finish dictation. Try again.'); }
     });
 
     function checkNewApprovals(pending) {
@@ -5065,30 +5315,25 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
         return;
       }
 
-      const riskClass = `risk-${appr.risk_level.toLowerCase()}`;
-      dock.className = `approval-dock ${riskClass}`;
-
-      const badgeColor = appr.risk_level === 'critical' ? '#ef4444'
-        : appr.risk_level === 'high' ? '#f97316'
-        : '#eab308';
+      dock.className = 'approval-dock';
+      const tool = String(appr.tool_name || '').toLowerCase();
+      const ask = /bash|shell|exec|command/.test(tool) ? 'Run this command?'
+        : /edit|write|patch|replace/.test(tool) ? 'Change this file?'
+        : /read|view/.test(tool) ? 'Read this file?'
+        : 'Allow this step?';
+      const who = harnessTheme(appr.harness).short;
+      const risk = String(appr.risk_level || '').toLowerCase();
+      const riskLine = risk === 'critical' || risk === 'high' ? 'This one can change things.' : '';
 
       replaceChangedHtml(dock, `
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:7px">
-          <div style="display:flex;align-items:center;gap:6px">
-            <span style="font-size:15px">🛡️</span>
-            <span style="font-size:12px;font-weight:700;letter-spacing:0.3px;color:#fff">HITL APPROVAL REQUIRED</span>
-          </div>
-          <span style="font-size:10px;font-weight:800;text-transform:uppercase;padding:2px 7px;border-radius:6px;background:${badgeColor};color:#fff">${escapeHtml(appr.risk_level)}</span>
-        </div>
-        <div style="font-size:11.5px;color:var(--text-muted);margin-bottom:6px">
-          Agent <strong style="color:var(--accent);text-transform:uppercase">${escapeHtml(appr.harness)}</strong> requesting execution of <code style="color:#fff">${escapeHtml(appr.tool_name)}</code>:
-        </div>
-        <div style="background:#0e0e0e;border:1px solid rgba(255,255,255,0.12);border-radius:8px;padding:7px 10px;font-family:ui-monospace,monospace;font-size:11px;color:#f3f4f6;word-break:break-all;max-height:85px;overflow-y:auto;margin-bottom:9px">${escapeHtml(appr.target)}</div>
-        ${appr.details ? `<details style="margin:-2px 0 9px"><summary style="font-size:10.5px;color:var(--text-muted);cursor:pointer;user-select:none">raw tool input (what actually runs)</summary><div style="background:#0e0e0e;border:1px solid rgba(255,255,255,0.12);border-radius:8px;padding:7px 10px;font-family:ui-monospace,monospace;font-size:10.5px;color:#fca5a5;word-break:break-all;max-height:110px;overflow-y:auto;margin-top:5px">${escapeHtml(appr.details)}</div></details>` : ''}
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px">
-          <button class="new-thread-btn" style="background:#10b981;color:#fff;justify-content:center;padding:7px 0;font-size:11.5px;font-weight:650" onclick="submitApprovalDecision('${escapeAttr(appr.id)}', 'allow_once')">✓ Allow</button>
-          <button class="new-thread-btn" style="background:#4f46e5;color:#fff;justify-content:center;padding:7px 0;font-size:11.5px;font-weight:650" onclick="submitApprovalDecision('${escapeAttr(appr.id)}', 'allow_always')" title="Remember this exact call for this thread (High/Critical risk always re-prompts)">🛡️ Always</button>
-          <button class="new-thread-btn" style="background:#ef4444;color:#fff;justify-content:center;padding:7px 0;font-size:11.5px;font-weight:650" onclick="submitApprovalDecision('${escapeAttr(appr.id)}', 'deny')">✕ Deny</button>
+        <p class="approval-kicker">${escapeHtml(who)} · Needs your OK${riskLine ? ' · ' + riskLine : ''}</p>
+        <h2 class="approval-ask">${ask}</h2>
+        <div class="approval-target">${escapeHtml(appr.target || appr.tool_name)}</div>
+        ${appr.details ? `<details class="steps"><summary>Show the steps</summary><pre class="step-raw">${escapeHtml(appr.details)}</pre></details>` : ''}
+        <div class="approval-actions">
+          <button class="approval-allow" aria-label="✓ Allow" onclick="submitApprovalDecision('${escapeAttr(appr.id)}', 'allow_once')">Allow</button>
+          <button class="approval-always" aria-label="🛡️ Always" title="Remember this for this chat. High risk still asks again." onclick="submitApprovalDecision('${escapeAttr(appr.id)}', 'allow_always')">Always</button>
+          <button class="approval-deny" aria-label="✕ Deny" onclick="submitApprovalDecision('${escapeAttr(appr.id)}', 'deny')">Deny</button>
         </div>
       `);
     }
@@ -5184,6 +5429,7 @@ mod tests {
         assert!(INDEX_HTML.contains("id=\"composerInput\""));
         assert!(INDEX_HTML.contains("id=\"headerHarnessDot\""));
         assert!(INDEX_HTML.contains("id=\"runningStopBtn\""));
+        assert!(INDEX_HTML.contains("function linkedConversation"));
     }
 
     #[test]

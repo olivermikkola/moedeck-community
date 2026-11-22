@@ -63,7 +63,9 @@ also reported `Blocked by configuration policy` with `executed: false`.
 Read and write turns used the same native session. The user's shared OpenCode
 server and configuration were unchanged.
 
+The actual AGY Flash read result in the phone layout (Chromium, no browser errors):
 
+![AGY Gemini 3.8 Flash reading a test file through MoE Deck](screenshots/agy-flash-real-proof.png)
 
 The implementation follows OpenCode's [V2 permission actions][permissions] and
 [policy evaluation][policies]. Policies can deny tools after agent rules and

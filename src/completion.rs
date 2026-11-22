@@ -24,7 +24,7 @@ impl Completion {
                             .as_str()
                             .is_some_and(|s| s != "SUCCESS"))
             }
-            "claude" | "agy" => {
+            "claude" | "agy" | "cursor" => {
                 kind == "result"
                     && (value["is_error"].as_bool() == Some(true)
                         || value["subtype"]
@@ -32,6 +32,13 @@ impl Completion {
                             .is_some_and(|s| s.starts_with("error")))
             }
             "keel" => kind == "done" && value["status"].as_str() == Some("error"),
+            "grok" => {
+                kind == "error"
+                    || (kind == "end"
+                        && value["stopReason"].as_str().is_some_and(|reason| {
+                            matches!(reason, "max_turns" | "max_turn_requests" | "refusal")
+                        }))
+            }
             "opencode" => kind == "error",
             _ => false,
         };
@@ -71,10 +78,10 @@ impl Completion {
                 },
             );
         };
-        let mut details = reason;
+        let mut details = strip_ansi(&reason);
         if !self.stopped && !stderr.trim().is_empty() {
             details.push('\n');
-            details.extend(stderr.trim().chars().take(500));
+            details.extend(strip_ansi(stderr.trim()).chars().take(500));
         }
         let text = if partial.trim().is_empty() {
             details
@@ -104,6 +111,48 @@ pub async fn stderr_tail(mut stderr: impl tokio::io::AsyncRead + Unpin) -> Strin
         }
     }
     String::from_utf8_lossy(&tail).into_owned()
+}
+
+/// Strip ANSI escape sequences (colors, cursor movement, OSC titles) from
+/// failure text: harnesses keep colors on when piped, and the cockpit must
+/// render a failure as plain text, never raw `ESC[31m` clutter from stderr.
+pub fn strip_ansi(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c != '\u{1b}' {
+            out.push(c);
+            continue;
+        }
+        match chars.peek() {
+            // CSI sequence: `ESC [ params final` with a 64–126 final byte.
+            Some('[') => {
+                chars.next();
+                for e in chars.by_ref() {
+                    if ('\u{40}'..='\u{7e}').contains(&e) {
+                        break;
+                    }
+                }
+            }
+            // OSC sequence: `ESC ] … BEL` or `ESC ] … ESC \`.
+            Some(']') => {
+                chars.next();
+                loop {
+                    match chars.next() {
+                        None | Some('\u{7}') => break,
+                        Some('\u{1b}') => {
+                            chars.next();
+                            break;
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            // A lone or unknown escape: drop it and keep reading.
+            _ => {}
+        }
+    }
+    out
 }
 
 /// Separator `finish` puts between a partial answer and why the turn stopped.
@@ -175,6 +224,8 @@ fn harness_name(harness: &str) -> &str {
         "codex" => "Codex",
         "opencode" => "OpenCode",
         "keel" => "Keel",
+        "cursor" => "Cursor",
+        "grok" => "Grok",
         other => other,
     }
 }
@@ -262,9 +313,14 @@ mod tests {
                 r#"{"type":"result","subtype":"error_max_turns","errors":["quota exhausted"]}"#,
             ),
             (
+                "cursor",
+                r#"{"type":"result","subtype":"error","is_error":true,"result":"quota exhausted"}"#,
+            ),
+            (
                 "keel",
                 r#"{"type":"done","status":"error","error":"quota exhausted"}"#,
             ),
+            ("grok", r#"{"type":"error","message":"quota exhausted"}"#),
             (
                 "opencode",
                 r#"{"type":"error","error":{"message":"quota exhausted"}}"#,
@@ -298,6 +354,35 @@ mod tests {
         assert!(!success);
         assert!(text.contains("compiler failed"));
     }
+    #[test]
+    fn strip_ansi_removes_colors_csi_and_osc_but_keeps_text() {
+        let colored = "\u{1b}[2m2026-11-06T15:09:15Z\u{1b}[0m \u{1b}[31mERROR\u{1b}[0m rmcp::transport::worker";
+        assert_eq!(
+            strip_ansi(colored),
+            "2026-11-06T15:09:15Z ERROR rmcp::transport::worker"
+        );
+        assert_eq!(strip_ansi("\u{1b}]0;title\u{1b}\\plain"), "plain");
+        assert_eq!(strip_ansi("\u{1b}]0;title\u{7}plain"), "plain");
+        assert_eq!(strip_ansi("no escapes \u{1b} mid"), "no escapes  mid");
+    }
+
+    #[test]
+    fn failed_turn_stderr_shows_up_without_ansi_codes() {
+        // Codex failures arrive as a JSON-RPC `Action::Fail`, not through
+        // the line-based `observe` path.
+        let completion = Completion {
+            stopped: false,
+            failure: Some(
+                "The 'opus' model is not supported when using Codex with a ChatGPT account.".into(),
+            ),
+        };
+        let stderr = "2026-11-06T15:09:15.055314Z \u{1b}[2m\u{1b}[0m \u{1b}[31mERROR\u{1b}[0m \u{1b}[2mrmcp::transport::worker\u{1b}[0m: worker quit with fatal";
+        let (success, text) = completion.finish(None, "Partial answer".into(), stderr);
+        assert!(!success);
+        assert!(text.contains("not supported"));
+        assert!(!text.contains('\u{1b}'), "ANSI escape leaked: {text}");
+    }
+
     #[tokio::test]
     async fn noisy_stderr_is_drained_and_only_its_tail_retained() {
         use tokio::io::AsyncWriteExt;

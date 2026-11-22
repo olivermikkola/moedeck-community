@@ -29,6 +29,7 @@ pub struct TurnOutcome {
 
 pub struct RunnerState {
     pub active_tasks: RwLock<HashMap<String, String>>,
+    run_activity: RwLock<HashMap<String, crate::harness_status::RunActivity>>,
     pub run_ids: RwLock<HashMap<String, Uuid>>,
     pub abort_handles: Mutex<HashMap<String, tokio::sync::oneshot::Sender<()>>>,
     pub child_stdins: Mutex<HashMap<String, Arc<tokio::sync::Mutex<tokio::process::ChildStdin>>>>,
@@ -47,6 +48,7 @@ impl RunnerState {
     pub fn with_approvals(approvals: Arc<ApprovalManager>) -> Arc<Self> {
         Arc::new(Self {
             active_tasks: RwLock::new(HashMap::new()),
+            run_activity: RwLock::new(HashMap::new()),
             run_ids: RwLock::new(HashMap::new()),
             abort_handles: Mutex::new(HashMap::new()),
             child_stdins: Mutex::new(HashMap::new()),
@@ -78,6 +80,31 @@ impl RunnerState {
         self.active_tasks.read().await.clone()
     }
 
+    pub async fn activity_snapshot(&self) -> HashMap<String, crate::harness_status::RunActivity> {
+        self.run_activity.read().await.clone()
+    }
+
+    /// Records that a live run just emitted a stream event.
+    async fn note_activity(
+        &self,
+        conv_id: &str,
+        run_id: Uuid,
+        last_tool: Option<&ToolSummaryItem>,
+    ) {
+        if self.run_ids.read().await.get(conv_id).copied() != Some(run_id) {
+            return;
+        }
+        self.run_activity.write().await.insert(
+            conv_id.to_string(),
+            crate::harness_status::RunActivity {
+                last_event_ms: Utc::now().timestamp_millis(),
+                doing: last_tool
+                    .map(|t| crate::harness_status::describe_action(&t.name, &t.summary)),
+                tool_running: last_tool.is_some_and(|t| t.status == "running"),
+            },
+        );
+    }
+
     pub async fn stop_conversation(&self, conv_id: &str) -> bool {
         // Signal the stop before closing stdin: the Codex app-server exits
         // cleanly on EOF, which must not read as a finished turn.
@@ -88,6 +115,7 @@ impl RunnerState {
         self.approvals.clear_conversation(conv_id).await;
         if stopped {
             self.active_tasks.write().await.remove(conv_id);
+            self.run_activity.write().await.remove(conv_id);
             self.run_ids.write().await.remove(conv_id);
             return true;
         }
@@ -100,6 +128,7 @@ impl RunnerState {
             self.native_approval_runs.write().await.remove(conv_id);
             self.run_ids.write().await.remove(conv_id);
             self.active_tasks.write().await.remove(conv_id);
+            self.run_activity.write().await.remove(conv_id);
             self.abort_handles.lock().await.remove(conv_id);
             self.child_stdins.lock().await.remove(conv_id);
             self.approvals.clear_conversation(conv_id).await;
@@ -160,18 +189,21 @@ pub fn sanitize_effort(raw: &str) -> String {
 
 pub fn sanitize_harness(raw: &str) -> String {
     match raw.trim().to_lowercase().as_str() {
-        "claude" | "agy" | "codex" | "opencode" | "keel" => raw.trim().to_lowercase(),
+        "claude" | "agy" | "codex" | "opencode" | "keel" | "cursor" | "grok" => {
+            raw.trim().to_lowercase()
+        }
         _ => "claude".to_string(),
     }
 }
 
 /// Harnesses that need MoE Deck's piped stdin: the native approval broker writes
 /// `y\n`/`n\n` there, transcript-driven CLIs read interactive answers from
-/// it, and the Codex app-server speaks JSON-RPC over it. `opencode run` drains stdin to EOF
-/// before doing any work when stdin is not a TTY — keeping that pipe open makes
-/// every OpenCode turn hang with zero output.
+/// it, and the Codex app-server speaks JSON-RPC over it. `opencode run`,
+/// `cursor-agent -p`, and `grok -p` drain stdin to EOF before doing any work
+/// when stdin is not a TTY — keeping that pipe open makes the turn hang with
+/// zero output.
 fn harness_wants_stdin(harness: &str) -> bool {
-    harness != "opencode"
+    !matches!(harness, "opencode" | "cursor" | "grok")
 }
 
 /// Ensures a user prompt starting with `-` is never parsed as a CLI option flag.
@@ -217,6 +249,18 @@ pub async fn dispatch_turn_with_outcome(
     })
     .await
     .unwrap_or(None);
+
+    if let Some(detail) = &existing_detail {
+        if detail.summary.status == "unknown" {
+            return Err(detail.summary.running_task_label.clone().unwrap_or_else(|| "This native history is read-only. Continue in its native app or start a new chat in MoE Deck.".into()));
+        }
+        if detail.summary.status == "busy" && !detail.summary.can_stop {
+            return Err(format!(
+                "This turn is running in {}. Stop or finish it there before sending in MoE Deck.",
+                detail.summary.harness
+            ));
+        }
+    }
 
     let mut overlays = load_overlays();
     let now_ms = Utc::now().timestamp_millis();
@@ -504,7 +548,23 @@ pub async fn dispatch_turn_with_outcome(
         None
     };
 
+    let grok_native = if target_harness == "grok" {
+        native_raw
+            .clone()
+            .or_else(|| overlay_native_session(&conv_id))
+            .filter(|id| Uuid::parse_str(id).is_ok())
+    } else {
+        None
+    };
     let codex_native = if target_harness == "codex" && !session_busy && workdir == base_workdir {
+        native_raw
+            .clone()
+            .or_else(|| overlay_native_session(&conv_id))
+            .filter(|id| Uuid::parse_str(id).is_ok())
+    } else {
+        None
+    };
+    let cursor_native = if target_harness == "cursor" {
         native_raw
             .clone()
             .or_else(|| overlay_native_session(&conv_id))
@@ -679,6 +739,53 @@ pub async fn dispatch_turn_with_outcome(
                 }
                 c
             }
+            "cursor" => {
+                let prompt = if cursor_native.is_some() && !session_busy {
+                    raw_user_text.as_str()
+                } else {
+                    prompt_with_context.as_str()
+                };
+                let mut c = Command::new(bin_str(crate::cursor::BINARY));
+                c.args(
+                    crate::cursor::Turn {
+                        safety: safety_mode,
+                        model: &model_id,
+                        workdir: &workdir,
+                        session: if session_busy {
+                            None
+                        } else {
+                            cursor_native.as_deref()
+                        },
+                        prompt,
+                    }
+                    .args(),
+                );
+                c
+            }
+            "grok" => {
+                let prompt = if grok_native.is_some() && !session_busy {
+                    raw_user_text.as_str()
+                } else {
+                    prompt_with_context.as_str()
+                };
+                let mut c = Command::new(bin_str(crate::grok::BINARY));
+                c.args(
+                    crate::grok::Turn {
+                        safety: safety_mode,
+                        model: &model_id,
+                        effort: &effort,
+                        workdir: &workdir,
+                        session: if session_busy {
+                            None
+                        } else {
+                            grok_native.as_deref()
+                        },
+                        prompt,
+                    }
+                    .args(),
+                );
+                c
+            }
             _ => {
                 // A private server must load this turn's policy, instead of
                 // reusing the shared server's allow-all environment.
@@ -736,11 +843,17 @@ pub async fn dispatch_turn_with_outcome(
                 update_overlay_assistant(
                     &conv_id_clone,
                     &assistant_msg_id,
-                    err_text,
+                    err_text.clone(),
                     None,
                     Vec::new(),
                     Vec::new(),
                     false,
+                );
+                crate::webhooks::notify_turn_finished(
+                    &conv_id_clone,
+                    &target_harness,
+                    false,
+                    &err_text,
                 );
                 runner_clone.finish_run(&conv_id_clone, run_id).await;
                 return;
@@ -810,6 +923,9 @@ pub async fn dispatch_turn_with_outcome(
                                     Some(run_id),
                                 ).await;
                             }
+                            runner_clone
+                                .note_activity(&conv_id_clone, run_id, accumulated_tools.last())
+                                .await;
                             if target_harness == "opencode" && captured_session.is_none() {
                                 if let Some(sid) = extract_opencode_session_id(&line) {
                                     if opencode_native.is_none() {
@@ -818,7 +934,12 @@ pub async fn dispatch_turn_with_outcome(
                                     captured_session = Some(sid);
                                 }
                             }
-                            if matches!(target_harness.as_str(), "claude" | "agy") && captured_session.is_none() {
+                            if matches!(
+                                target_harness.as_str(),
+                                "claude" | "agy" | "cursor" | "grok"
+                            )
+                                && captured_session.is_none()
+                            {
                                 if let Some(sid) = extract_native_session_id(&target_harness, &line) {
                                     if runner_clone.run_ids.read().await.get(&conv_id_clone).copied() == Some(run_id) {
                                         set_overlay_native_session(&conv_id_clone, &sid);
@@ -913,9 +1034,15 @@ pub async fn dispatch_turn_with_outcome(
         if let Some(tx) = outcome_tx.take() {
             let _ = tx.send(TurnOutcome {
                 success,
-                text: accumulated_text,
+                text: accumulated_text.clone(),
             });
         }
+        crate::webhooks::notify_turn_finished(
+            &conv_id_clone,
+            &target_harness,
+            success,
+            &accumulated_text,
+        );
         runner_clone.finish_run(&conv_id_clone, run_id).await;
     });
 
@@ -1176,6 +1303,33 @@ async fn parse_stream_line_for_run(
             }
         }
 
+        if let Some(effect) = crate::grok::stream_effect(&val) {
+            match effect {
+                crate::grok::StreamEffect::Text(text) => accumulated_text.push_str(&text),
+                crate::grok::StreamEffect::Thought(text) => {
+                    append_thinking(accumulated_thinking, &text);
+                }
+                crate::grok::StreamEffect::Tool(progress) => {
+                    if !progress.named && progress.status != "running" {
+                        if let Some(tool) = accumulated_tools
+                            .iter_mut()
+                            .rev()
+                            .find(|t| t.status == "running")
+                        {
+                            tool.status = progress.status.into();
+                            return;
+                        }
+                    }
+                    record_tool_progress(
+                        accumulated_tools,
+                        &progress.name,
+                        &progress.summary,
+                        progress.status,
+                    );
+                }
+            }
+            return;
+        }
         if etype == "capabilities" && val["approval_protocol"].as_str() == Some("stdio-line-v1") {
             if let Some(run_id) = expected_run {
                 runner
@@ -1327,6 +1481,15 @@ async fn parse_stream_line_for_run(
             }
             return;
         }
+        if let Some(progress) = crate::cursor::tool_progress(&val) {
+            record_tool_progress(
+                accumulated_tools,
+                &progress.name,
+                &progress.summary,
+                progress.status,
+            );
+            return;
+        }
         if etype == "tool_call" {
             let data = val.get("data").unwrap_or(&val);
             let name = data
@@ -1390,6 +1553,9 @@ async fn parse_stream_line_for_run(
 
         // 4. Claude Code `assistant` message
         if etype == "assistant" {
+            if crate::cursor::skip_duplicate_assistant(&val) {
+                return;
+            }
             if let Some(arr) = val
                 .get("message")
                 .and_then(|m| m.get("content"))
@@ -1733,10 +1899,11 @@ fn extract_opencode_session_id(line: &str) -> Option<String> {
 fn extract_native_session_id(harness: &str, line: &str) -> Option<String> {
     let value: Value = serde_json::from_str(line).ok()?;
     let id = match harness {
-        "claude" if value["type"] == "system" && value["subtype"] == "init" => {
+        "claude" | "cursor" if value["type"] == "system" && value["subtype"] == "init" => {
             value["session_id"].as_str()
         }
         "agy" if value["event"] == "init" => value["conversation_id"].as_str(),
+        "grok" => crate::grok::session_id_from_line(&value),
         _ => None,
     }?;
     Uuid::parse_str(id).ok().map(|_| id.to_string())
@@ -1859,7 +2026,8 @@ mod parity_tests {
 /// can only be replaced by starting a new thread.
 pub fn handle_reset_command(conv_id: &str) -> String {
     match conv_id.split(':').next() {
-        Some("claude") | Some("agy") | Some("codex") | Some("opencode") | Some("keel") => format!(
+        Some("claude") | Some("agy") | Some("codex") | Some("opencode") | Some("keel")
+        | Some("cursor") | Some("grok") => format!(
             "ℹ️ This thread lives in a native `{0}` session, so `/new` can't reset it in place. \
 Create a new thread in MoE Deck to start fresh.",
             conv_id.split(':').next().unwrap_or("keel")
@@ -1894,7 +2062,7 @@ mod tests {
     /// chosen stdin policy must let this process exit on its own.
     #[tokio::test]
     async fn harness_stdin_policy_does_not_deadlock_opencode() {
-        for harness in ["opencode"] {
+        for harness in ["opencode", "cursor", "grok"] {
             let mut cmd = Command::new("sh");
             cmd.args(["-c", "cat >/dev/null; printf '%s' ready"]);
             cmd.stdin(if harness_wants_stdin(harness) {
@@ -1933,6 +2101,88 @@ mod tests {
         );
         // Non-JSON lines (e.g. tool output barging in) yield None
         assert_eq!(extract_opencode_session_id("noise"), None);
+    }
+
+    #[tokio::test]
+    async fn cursor_stream_renders_text_and_tools_without_an_approval() {
+        let runner = RunnerState::new();
+        let mut text = String::new();
+        let mut thinking = None;
+        let mut tools = Vec::new();
+        let lines = [
+            r#"{"type":"assistant","model_call_id":"flush","timestamp_ms":1,"message":{"content":[{"type":"text","text":"DUP"}]}}"#,
+            r#"{"type":"assistant","message":{"content":[{"type":"text","text":"I'll read it"}]}}"#,
+            r#"{"type":"tool_call","subtype":"started","call_id":"t1","tool_call":{"readToolCall":{"args":{"path":"README.md"}}}}"#,
+            r#"{"type":"tool_call","subtype":"completed","call_id":"t1","tool_call":{"readToolCall":{"args":{"path":"README.md"},"result":{"success":{"totalLines":3}}}}}"#,
+            r#"{"type":"result","subtype":"success","is_error":false,"result":"I'll read it"}"#,
+        ];
+        for line in lines {
+            parse_stream_line(
+                line,
+                &mut text,
+                &mut thinking,
+                &mut tools,
+                "cursor:1",
+                &runner,
+            )
+            .await;
+        }
+        assert_eq!(text, "I'll read it");
+        assert_eq!(tools.len(), 1);
+        assert_eq!(tools[0].name, "Read");
+        assert_eq!(tools[0].summary, "README.md");
+        assert_eq!(tools[0].status, "done");
+        assert!(runner.approvals.list_pending().await.is_empty());
+        assert_eq!(
+            extract_native_session_id(
+                "cursor",
+                r#"{"type":"system","subtype":"init","session_id":"c6b62c6f-7ead-4fd6-9922-e952131177ff"}"#
+            )
+            .as_deref(),
+            Some("c6b62c6f-7ead-4fd6-9922-e952131177ff")
+        );
+    }
+
+    #[tokio::test]
+    async fn grok_stream_renders_text_and_tools_without_an_approval() {
+        let runner = RunnerState::new();
+        let mut text = String::new();
+        let mut thinking = None;
+        let mut tools = Vec::new();
+        let lines = [
+            r#"{"type":"thought","data":"checking"}"#,
+            r#"{"type":"text","data":"SESSION_"}"#,
+            r#"{"type":"text","data":"OK"}"#,
+            r#"{"type":"tool_call","toolCallId":"t1","toolName":"read_file","title":"Read","status":"in_progress","rawInput":{"path":"README.md"}}"#,
+            r#"{"type":"tool_call_update","toolCallId":"t1","status":"completed"}"#,
+            r#"{"type":"end","stopReason":"end_turn","sessionId":"c6b62c6f-7ead-4fd6-9922-e952131177ff"}"#,
+        ];
+        for line in lines {
+            parse_stream_line(
+                line,
+                &mut text,
+                &mut thinking,
+                &mut tools,
+                "grok:1",
+                &runner,
+            )
+            .await;
+        }
+        assert_eq!(text, "SESSION_OK");
+        assert_eq!(thinking.as_deref(), Some("checking"));
+        assert_eq!(tools.len(), 1);
+        assert_eq!(tools[0].name, "read_file");
+        assert_eq!(tools[0].summary, "README.md");
+        assert_eq!(tools[0].status, "done");
+        assert!(runner.approvals.list_pending().await.is_empty());
+        assert_eq!(
+            extract_native_session_id(
+                "grok",
+                r#"{"type":"end","stopReason":"end_turn","sessionId":"c6b62c6f-7ead-4fd6-9922-e952131177ff"}"#
+            )
+            .as_deref(),
+            Some("c6b62c6f-7ead-4fd6-9922-e952131177ff")
+        );
     }
 
     #[tokio::test]
@@ -2097,6 +2347,8 @@ mod tests {
         assert_eq!(sanitize_effort("--evil-flag"), "medium");
         assert_eq!(sanitize_harness("opencode"), "opencode");
         assert_eq!(sanitize_harness("keel"), "keel");
+        assert_eq!(sanitize_harness("cursor"), "cursor");
+        assert_eq!(sanitize_harness("grok"), "grok");
         assert_eq!(sanitize_harness("../../bin/sh"), "claude");
         assert_eq!(safe_prompt_arg("--version"), " --version");
         assert_eq!(safe_prompt_arg("Normal prompt"), "Normal prompt");

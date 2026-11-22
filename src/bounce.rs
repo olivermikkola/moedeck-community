@@ -202,6 +202,7 @@ impl HandoffEnvelope {
 
         let default_instruction = match self.target_harness.as_str() {
             "keel" => "Execute the pending tasks in this isolated sandbox worktree. Use `keel vfs`, `patch_file`, and compiler/test diagnostics to verify your changes. Ensure tests pass before reporting completion.",
+            "cursor" | "grok" => "Continue in this sandbox worktree. Edit the project, run the relevant checks, and report what changed.",
             "claude" => "Perform an architectural audit of the approach, review any diffs for safety, and refine the design.",
             "agy" => "Perform fast autonomous execution and verify the modified files.",
             _ => "Continue execution in this sandbox branch and verify results.",
@@ -440,8 +441,8 @@ mod tests {
                 id: "claude:1".to_string(),
                 raw_id: "1".to_string(),
                 title: "Refactor Rust Storage".to_string(),
-                subtitle: "/home/ada/project".to_string(),
-                workdir: "/home/ada/project".to_string(),
+                subtitle: "/home/ada".to_string(),
+                workdir: "/home/ada".to_string(),
                 harness: "claude".to_string(),
                 profile: None,
                 profile_label: String::new(),
@@ -456,6 +457,7 @@ mod tests {
                 last_preview: "Done".to_string(),
                 pr_links: Vec::new(),
                 pending_approval: None,
+        can_stop: false,
             },
             messages: vec![
                 ChatMessage {

@@ -7,68 +7,19 @@ use std::process::Command;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use uuid::Uuid;
 
-/// Classifies spoken natural language into high-level agentic intents.
-pub fn classify_voice_intent(raw_text: &str) -> VoiceIntent {
-    let text = raw_text.trim();
-    let lower = text.to_lowercase();
-
-    if lower == "stop" || lower == "stop task" || lower == "cancel" || lower == "halt" {
-        return VoiceIntent::StopTask;
-    }
-
-    if lower.contains("fix ci") || lower.contains("fix tests") || lower.contains("repair build") {
-        return VoiceIntent::FixCi;
-    }
-
-    if lower.contains("run checks")
-        || lower.contains("check ci")
-        || lower.contains("pr status")
-        || lower == "test"
-    {
-        return VoiceIntent::CheckCi;
-    }
-
-    if lower.contains("audit diff")
-        || lower.contains("review diff")
-        || lower.contains("second opinion")
-    {
-        return VoiceIntent::ReviewDiff;
-    }
-
-    if let Some(rest) = lower
-        .strip_prefix("bounce to ")
-        .or_else(|| lower.strip_prefix("handoff to "))
-        .or_else(|| lower.strip_prefix("delegate to "))
-    {
-        let words: Vec<&str> = rest.split_whitespace().collect();
-        if let Some(target) = words.first() {
-            let instructions = if words.len() > 1 {
-                Some(words[1..].join(" "))
-            } else {
-                None
-            };
-            return VoiceIntent::SwarmBounce {
-                target_harness: target.to_string(),
-                custom_instructions: instructions,
-            };
-        }
-    }
-
-    VoiceIntent::ChatPrompt(text.to_string())
-}
-
 /// Transcribes audio payload using local Whisper if available, with graceful client fallback.
 pub fn process_voice_transcription(req: &VoiceTranscribeRequest) -> VoiceTranscribeResponse {
-    // If client already transcribed via Web Speech API, classify and return directly
+    // Dictation is text for review, never an instruction to execute an action.
     if let Some(ref text) = req.speech_text {
         let clean = text.trim();
         if !clean.is_empty() {
-            let intent = classify_voice_intent(clean);
+            let intent = VoiceIntent::ChatPrompt(clean.to_string());
             return VoiceTranscribeResponse {
                 ok: true,
                 transcript: clean.to_string(),
                 intent,
                 engine: "web_speech".to_string(),
+                error: None,
             };
         }
     }
@@ -78,22 +29,26 @@ pub fn process_voice_transcription(req: &VoiceTranscribeRequest) -> VoiceTranscr
         if let Ok(bytes) = BASE64_STD.decode(b64.trim()) {
             if let Some(transcript) = try_local_whisper_transcription(&bytes, req.format.as_deref())
             {
-                let intent = classify_voice_intent(&transcript);
+                let intent = VoiceIntent::ChatPrompt(transcript.clone());
                 return VoiceTranscribeResponse {
                     ok: true,
                     transcript,
                     intent,
                     engine: "whisper".to_string(),
+                    error: None,
                 };
             }
         }
     }
 
     VoiceTranscribeResponse {
-        ok: true,
+        ok: false,
         transcript: String::new(),
         intent: VoiceIntent::ChatPrompt(String::new()),
-        engine: "ready".to_string(),
+        engine: "unavailable".to_string(),
+        error: Some(
+            "No transcript was produced. Try again or use your keyboard microphone.".into(),
+        ),
     }
 }
 
@@ -264,39 +219,17 @@ mod tests {
     }
 
     #[test]
-    fn test_classify_voice_intent() {
-        assert_eq!(classify_voice_intent("stop"), VoiceIntent::StopTask);
-        assert_eq!(classify_voice_intent("stop task"), VoiceIntent::StopTask);
-        assert_eq!(classify_voice_intent("halt"), VoiceIntent::StopTask);
-
-        assert_eq!(
-            classify_voice_intent("Please fix CI now"),
-            VoiceIntent::FixCi
-        );
-        assert_eq!(classify_voice_intent("run checks"), VoiceIntent::CheckCi);
-        assert_eq!(
-            classify_voice_intent("review diff"),
-            VoiceIntent::ReviewDiff
-        );
-
-        match classify_voice_intent("bounce to keel optimize buffer flush") {
-            VoiceIntent::SwarmBounce {
-                target_harness,
-                custom_instructions,
-            } => {
-                assert_eq!(target_harness, "keel");
-                assert_eq!(
-                    custom_instructions,
-                    Some("optimize buffer flush".to_string())
-                );
-            }
-            _ => panic!("Expected SwarmBounce intent"),
+    fn empty_or_invalid_audio_is_a_visible_failure() {
+        for audio_base64 in [None, Some("not-base64!".to_string())] {
+            let response = process_voice_transcription(&VoiceTranscribeRequest {
+                audio_base64,
+                format: Some("wav".into()),
+                speech_text: None,
+            });
+            assert!(!response.ok);
+            assert!(response.error.is_some());
+            assert!(response.transcript.is_empty());
         }
-
-        assert_eq!(
-            classify_voice_intent("Implement a new shader for the water system"),
-            VoiceIntent::ChatPrompt("Implement a new shader for the water system".to_string())
-        );
     }
 
     #[test]
@@ -309,7 +242,7 @@ mod tests {
         let res = process_voice_transcription(&req);
         assert!(res.ok);
         assert_eq!(res.transcript, "fix tests");
-        assert_eq!(res.intent, VoiceIntent::FixCi);
+        assert_eq!(res.intent, VoiceIntent::ChatPrompt("fix tests".into()));
         assert_eq!(res.engine, "web_speech");
     }
 }

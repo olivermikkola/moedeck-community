@@ -49,6 +49,7 @@ and the primary account. The native CLI connected and emitted a claude.ai link,
 survived a MoE Deck page reload and a 15-second idle check, and stopped through the
 MoE Deck button with no browser errors. No model prompt was sent for this proof.
 
+![Real native Claude Remote Control ready in MoE Deck](screenshots/claude-remote-control-live.png)
 
 Connection from the physical Claude phone app, and iPhone keyboard/gesture
 behavior, still require device verification. A ready CLI/link is not proof that

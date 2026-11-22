@@ -65,6 +65,29 @@ fn work_dir() -> PathBuf {
     crate::discovery::config_dir().join("update")
 }
 
+/// Rebuildable build artifacts belong in the cache, not the config directory:
+/// a release build leaves ~300 MB of `target/` behind, and the config dir is
+/// backed up and synced like user data.
+fn build_cache_dir() -> PathBuf {
+    let base = std::env::var("XDG_CACHE_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| crate::discovery::home_dir().join(".cache"));
+    base.join("moedeck").join("update")
+}
+
+/// Move a pre-relocation `update/target` into the cache so the first update
+/// after upgrading keeps its warm cache and the config dir shrinks. Purely
+/// best-effort: on any failure the build just starts cold in the new place.
+fn migrate_legacy_target(work: &Path, cache: &Path) {
+    let legacy = work.join("target");
+    if legacy.is_dir() && !cache.exists() {
+        if let Some(parent) = cache.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let _ = std::fs::rename(&legacy, cache);
+    }
+}
+
 async fn git(dir: &Path, args: &[&str]) -> Result<String, String> {
     let out = Command::new("git")
         .arg("-C")
@@ -198,6 +221,8 @@ async fn run(runner: Arc<RunnerState>) -> Result<(), Failure> {
         "Building main (the first update takes a few minutes)…",
         String::new(),
     );
+    let cache = build_cache_dir();
+    migrate_legacy_target(&work, &cache);
     let cargo = [
         crate::discovery::home_dir().join(".cargo/bin/cargo"),
         PathBuf::from("cargo"),
@@ -212,7 +237,7 @@ async fn run(runner: Arc<RunnerState>) -> Result<(), Failure> {
         .arg(&cargo)
         .args(["build", "--release", "--locked"])
         .current_dir(&tree)
-        .env("CARGO_TARGET_DIR", work.join("target"))
+        .env("CARGO_TARGET_DIR", &cache)
         .env("CARGO_BUILD_JOBS", "2")
         .output()
         .await
@@ -335,5 +360,24 @@ mod tests {
         let t = tail(log.as_bytes());
         assert!(t.starts_with("line 20"));
         assert!(t.ends_with("line 49"));
+    }
+
+    #[test]
+    fn legacy_target_moves_into_the_cache_once() {
+        let dir = std::env::temp_dir().join(format!("moedeck-cache-{}", uuid::Uuid::new_v4()));
+        let work = dir.join("update");
+        let cache = dir.join("cache").join("moedeck").join("update");
+        std::fs::create_dir_all(work.join("target/release")).unwrap();
+        std::fs::write(work.join("target/release/moedeck"), "bin").unwrap();
+        migrate_legacy_target(&work, &cache);
+        assert!(cache.join("release/moedeck").is_file());
+        assert!(!work.join("target").exists());
+        // A later call must never clobber an existing cache.
+        std::fs::create_dir_all(work.join("target")).unwrap();
+        std::fs::write(cache.join("keep"), "x").unwrap();
+        migrate_legacy_target(&work, &cache);
+        assert!(cache.join("keep").is_file());
+        assert!(work.join("target").is_dir());
+        std::fs::remove_dir_all(dir).unwrap();
     }
 }

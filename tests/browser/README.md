@@ -52,3 +52,22 @@ Claude JSONL history discovery, separate profile homes without inherited primary
 tokens, visible native startup errors, and process-group cleanup on Stop and
 gateway termination. Chromium exercises graceful shutdown; WebKit exercises
 abrupt shutdown and PTY hangup. Process cleanup assertions use Linux `/proc`.
+
+`reliability.test.cjs` covers native Codex discovery with an older database
+schema and more than twelve chats, paired message formats, repeated answers,
+local image attachments, grouped command results, persistent step expansions,
+on-demand full tool output, and native versus gateway-owned activity. It holds
+real transcript file descriptors in fixture processes; an abandoned transcript
+must not inherit liveness from a different process. Native OpenCode history is
+read-only: a shared OpenCode daemon must not manufacture live agent entries.
+The suite also verifies the composer's Stop terminates its owned process and
+that pausing scheduled work persists through the actual goal API.
+
+Set `TMPDIR` to a disk-backed scratch directory when `/tmp` is tmpfs. These tests
+create disposable gateway homes and browser profiles under `TMPDIR`.
+
+`voice.test.cjs` checks dictation start, stop, cancel, permission errors, timeout,
+late callbacks, draft navigation and unsupported browsers. Recognition events
+are simulated; the gateway and UI are real. It verifies that dictated command
+phrases remain editable text and never trigger actions or send model requests.
+Microphone access and recognition accuracy still need physical-device testing.
