@@ -318,6 +318,16 @@ test('harness sessions, OpenCode history, failures and Safe policy', { timeout: 
   assert.equal((await request(goalRoute(bounded))).status,'paused');
   assert.equal((await request(goalRoute(bounded))).subgoals.length,2);
 
+  // The vm-lab template must point at the caller's own checkout, never a
+  // hardcoded owner path.
+  const noWorkdir = await fetch(origin+'/api/goals/template/vm-lab', {method:'POST',headers:{'Content-Type':'application/json',Origin:origin,Cookie:cookie},body:JSON.stringify({schedule:'1h'})});
+  assert.equal(noWorkdir.status,400);
+  assert.match((await noWorkdir.json()).error,/workdir is required/);
+  const templated = await request('/api/goals/template/vm-lab', {workdir:project, schedule:'1h'});
+  assert.equal(templated.subgoals.length,3);
+  assert.equal(templated.workdir,project);
+  await request(goalRoute(templated)+'/pause', {});
+
   const optIn = await makeGoal('ordinary provider failure');
   assert.equal(optIn.auto_triage,false,'automatic remediation must be explicitly enabled');
   await request(goalRoute(optIn)+'/tick', {});

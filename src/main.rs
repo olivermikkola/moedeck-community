@@ -939,9 +939,12 @@ async fn handle_request(
                     workdir: None,
                     schedule: None,
                 });
-            let workdir = payload
-                .workdir
-                .unwrap_or_else(|| "/home/ada/projects/vm-lab".to_string());
+            let Some(workdir) = payload.workdir.filter(|w| !w.trim().is_empty()) else {
+                return Ok(json_response(
+                    StatusCode::BAD_REQUEST,
+                    &json!({ "error": "workdir is required: point the vm-lab template at your own vm-lab checkout" }),
+                ));
+            };
             let template_req =
                 goals::create_vm_lab_assessment_goal(&workdir, payload.schedule.as_deref());
             match goal_mgr.create_goal(template_req).await {

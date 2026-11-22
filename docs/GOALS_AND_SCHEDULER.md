@@ -96,13 +96,13 @@ python3 scripts/moedeck-cron.py status
 # Trigger evaluation of all active goals
 python3 scripts/moedeck-cron.py tick
 
-# Stage the default 3-agent Big Goal for vm-lab
-python3 scripts/moedeck-cron.py setup-vmlab
+# Stage the default 3-agent Big Goal for your own vm-lab checkout
+python3 scripts/moedeck-cron.py setup-vmlab ~/Projects/vm-lab
 ```
 
 When ready to schedule via system cron (after review):
 ```cron
-*/15 * * * * nice -n 19 /usr/bin/python3 /home/ada/projects/moedeck/scripts/moedeck-cron.py tick >> ~/.config/moedeck/cron.log 2>&1
+*/15 * * * * nice -n 19 /usr/bin/python3 /path/to/moedeck/scripts/moedeck-cron.py tick >> ~/.config/moedeck/cron.log 2>&1
 ```
 
 ---
@@ -117,4 +117,4 @@ When ready to schedule via system cron (after review):
 - `POST /api/goals/:id/pause`: Pause future goal evaluation (including after restart). An already running turn continues until stopped separately.
 - `POST /api/goals/:id/resume`: Resume goal evaluation.
 - `DELETE /api/goals/:id`: Remove a goal.
-- `POST /api/goals/template/vm-lab`: Stage the standard 3-agent template for `vm-lab`.
+- `POST /api/goals/template/vm-lab`: Stage the standard 3-agent template for `vm-lab`. Requires `workdir` pointing at your own vm-lab checkout.

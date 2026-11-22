@@ -12,7 +12,7 @@ Coordinates multi-agent goals across OpenCode, Codex, and Antigravity (Agy):
 Usage:
   python3 scripts/moedeck-cron.py status           # Show active Big Goals & subgoals
   python3 scripts/moedeck-cron.py tick             # Evaluate due goals sequentially
-  python3 scripts/moedeck-cron.py setup-vmlab      # Stage the 3-agent Big Goal for vm-lab
+  python3 scripts/moedeck-cron.py setup-vmlab <path> # Stage the 3-agent Big Goal for your vm-lab checkout
 """
 
 import sys
@@ -74,7 +74,7 @@ def cmd_status():
             print("Note: MoE Deck daemon offline / unreachable; displaying on-disk goals directly.")
     if not goals:
         print("No Big Goals currently defined in MoE Deck.")
-        print("Run `python3 scripts/moedeck-cron.py setup-vmlab` to stage the vm-lab tri-agent goal.")
+        print("Run `python3 scripts/moedeck-cron.py setup-vmlab <path-to-vm-lab>` to stage the vm-lab tri-agent goal.")
         return
 
     print("=" * 70)
@@ -130,8 +130,10 @@ def cmd_tick(goal_id: str = None):
             res = api_post(f"/api/goals/{g['id']}/tick")
             print("Outcome:", json.dumps(res, indent=2))
 
-def cmd_setup_vmlab():
-    workdir = "/home/ada/projects/vm-lab"
+def cmd_setup_vmlab(workdir):
+    if not workdir:
+        print("usage: python3 scripts/moedeck-cron.py setup-vmlab <path-to-vm-lab>")
+        sys.exit(2)
     print(f"Creating Big Goal template for vm-lab in {workdir}...")
     res = api_post("/api/goals/template/vm-lab", {
         "workdir": workdir,
@@ -157,7 +159,7 @@ def main():
         gid = sys.argv[2] if len(sys.argv) > 2 else None
         cmd_tick(gid)
     elif cmd in ("setup-vmlab", "setup"):
-        cmd_setup_vmlab()
+        cmd_setup_vmlab(sys.argv[2] if len(sys.argv) > 2 else None)
     else:
         print(f"Unknown command: {cmd}")
         print(__doc__.strip())
