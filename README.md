@@ -5,22 +5,24 @@
 <h1 align="center">MoE Deck</h1>
 
 <p align="center">
-  <a href="https://github.com/olivermikkola/moedeck-community/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/olivermikkola/moedeck-community/actions/workflows/ci.yml/badge.svg?branch=main"></a>
+  <a href="https://github.com/olivermikkola/moedeck-community/actions/workflows/ci.yml"><img alt="CI: manual" src="https://img.shields.io/badge/CI-manual-blue"></a>
   <a href="LICENSE.md"><img alt="License: FSL-1.1-ALv2" src="https://img.shields.io/badge/license-FSL--1.1--ALv2-blue"></a>
   <img alt="Rust" src="https://img.shields.io/badge/built%20with-Rust%20stable-DEA584?logo=rust">
 </p>
 
-**MoE Deck** is a single-binary Rust daemon gateway for steering multiple local AI coding harnesses—**Claude Code (`claude`)**, **Antigravity (`agy`)**, **Codex (`codex`)**, **OpenCode (`opencode`)**, and **Keel (`keel`)**—from one cockpit, on your phone, desktop, or terminal (`moedeck tui`). Keel is not publicly released yet; the other four use their public CLIs. MoE Deck only offers the harnesses whose CLI is installed on the machine (Settings can turn one on or off).
+**MoE Deck** is a single-binary Rust daemon gateway for steering multiple local AI coding harnesses—**Claude Code (`claude`)**, **Antigravity (`agy`)**, **Codex (`codex`)**, **OpenCode (`opencode`)**, **Keel (`keel`)**, **Cursor Agent (`cursor-agent`)**, and **Grok Build (`grok`)**—from one cockpit, on your phone, desktop, or terminal (`moedeck tui`). Keel is not publicly released yet; the others use their public CLIs. MoE Deck only offers the harnesses whose CLI is installed on the machine (Settings can turn one on or off). Cursor setup is in [docs/cursor.md](docs/cursor.md) and Grok setup in [docs/grok.md](docs/grok.md).
 
-Switch between agent conversations, create a Git worktree for a task, respond to supported native approval requests, or hand context to a different harness. A Git worktree separates working files and branches; it is not a security sandbox.
+Switch between agent conversations, create a Git worktree for a task, respond to supported native approval requests, or hand context to a different harness. A Git worktree separates working files and branches; it is not a security sandbox. Big Goals can schedule recurring multi-agent work with bounded autonomous triage ([docs/GOALS_AND_SCHEDULER.md](docs/GOALS_AND_SCHEDULER.md)), and outbound webhooks can notify you about approvals, finished turns and stalls ([docs/webhooks.md](docs/webhooks.md)).
 
 - **[Vision (`VISION.md`)](VISION.md):** Why MoE Deck exists, the "One Captain, Multi-Harness" philosophy, and why terminal-on-a-phone wrappers fail.
 - **[Architecture (`ARCHITECTURE.md`)](ARCHITECTURE.md):** Lock-free JSONL/SQLite tailing, bounded seek parsing for 100 MB+ agent logs, cross-harness context handoff, and security boundaries.
 
 ## Download
 
-Ready-made builds for Linux (x86-64) and macOS (Apple silicon) are on the
-[releases page](https://github.com/olivermikkola/moedeck-community/releases), with SHA-256 checksums.
+Ready-made builds for Linux (x86-64, static so they run on any distro) are on
+the [releases page](https://github.com/olivermikkola/moedeck-community/releases),
+with SHA-256 checksums. macOS downloads are paused while the release pipeline
+is being fixed; on a Mac, build from source below.
 More at [moesystems.com/agent-management](https://moesystems.com/agent-management/).
 
 ```bash
@@ -28,9 +30,6 @@ tar xzf moedeck-*.tar.gz
 cd moedeck-*/
 ./moedeck install      # runs it in the background and prints the pairing link + passcode
 ```
-
-On a Mac, run `xattr -d com.apple.quarantine moedeck` before `./moedeck install`:
-the alpha isn't signed by Apple yet.
 
 ## Quickstart (build from source)
 

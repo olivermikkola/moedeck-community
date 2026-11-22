@@ -8,7 +8,7 @@ Antigravity's harness/model controls.
 ## First pass
 
 - One floating composer with the input above a single action row: attach,
-  harness, model/effort, voice, send. Walkie mode remains in the drawer.
+  harness, model/effort, dictation, send. Dictation stays in the draft until the user presses Send.
 - Large rounded bottom sheets, explicit close controls, keyboard dismissal and
   focus return. Model and harness choices are keyboard-accessible buttons.
 - A wider conversation drawer with search and filters. Voice and permission

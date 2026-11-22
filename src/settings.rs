@@ -177,6 +177,21 @@ pub fn native_models(harness: &str) -> Vec<ModelOption> {
     } else {
         models.push(default_model());
     }
+    if harness == "grok" {
+        // Documented coding default and the settings-page example. A later
+        // `grok models` catalog adds whatever this account can actually call.
+        for (id, label) in [("grok-build", "Grok Build"), ("grok-4.7", "Grok 4.7")] {
+            models.push(ModelOption {
+                id: id.into(),
+                label: label.into(),
+                default_effort: "default".into(),
+                efforts: vec!["default".into()],
+                base_url: None,
+                api_key_env: None,
+                thinking: None,
+            });
+        }
+    }
     if let Some(c) = catalogs().get(harness) {
         for model in &c.models {
             if !models.iter().any(|m| m.id == model.id) {
@@ -248,8 +263,8 @@ pub async fn refresh() -> Result<(), String> {
     static REFRESH_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
     let _guard = REFRESH_LOCK.lock().await;
     let mut cache = catalogs();
-    for harness in ["agy", "opencode"] {
-        let Some(binary) = resolve_bin_path(harness) else {
+    for harness in ["agy", "opencode", "cursor", "grok"] {
+        let Some(binary) = resolve_bin_path(crate::models::binary_name(harness)) else {
             continue;
         };
         let mut cmd = tokio::process::Command::new(binary);
@@ -260,7 +275,12 @@ pub async fn refresh() -> Result<(), String> {
         let entry = cache.entry(harness.into()).or_default();
         match result {
             Ok(Ok(output)) if output.status.success() => {
-                let models = parse_native(harness, &String::from_utf8_lossy(&output.stdout));
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                let models = if harness == "grok" {
+                    crate::grok::parse_model_list(&stdout)
+                } else {
+                    parse_native(harness, &stdout)
+                };
                 if models.is_empty() {
                     entry.error = Some(
                         "Native command returned no recognized models; kept last catalog".into(),

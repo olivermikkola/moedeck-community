@@ -223,7 +223,10 @@ pub struct ConversationSummary {
     pub model: String,
     pub model_label: String,
     pub effort: String,
-    pub status: String, // "busy" | "idle"
+    pub status: String, // "busy" | "idle" | "unknown" (read-only native history)
+    /// Only true for a live process owned by this gateway.
+    #[serde(default)]
+    pub can_stop: bool,
     pub running_tasks_count: usize,
     pub running_task_label: Option<String>,
     pub updated_at: i64,
@@ -363,14 +366,6 @@ pub struct VoiceTranscribeRequest {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "action", content = "payload", rename_all = "snake_case")]
 pub enum VoiceIntent {
-    StopTask,
-    FixCi,
-    CheckCi,
-    ReviewDiff,
-    SwarmBounce {
-        target_harness: String,
-        custom_instructions: Option<String>,
-    },
     ChatPrompt(String),
 }
 
@@ -380,6 +375,8 @@ pub struct VoiceTranscribeResponse {
     pub transcript: String,
     pub intent: VoiceIntent,
     pub engine: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -586,9 +583,41 @@ pub fn default_harnesses() -> Vec<HarnessInfo> {
             models: crate::settings::native_models("keel"),
             efforts: vec!["default".into()],
         },
+        HarnessInfo {
+            id: "cursor".to_string(),
+            name: "Cursor Agent".to_string(),
+            short_name: "Cursor".to_string(),
+            binary: "cursor-agent".to_string(),
+            accent: "#F54E00".to_string(),
+            accent_soft: "rgba(245, 78, 0, 0.16)".to_string(),
+            available: check_bin("cursor-agent"),
+            version: "latest".to_string(),
+            models: crate::settings::native_models("cursor"),
+            efforts: vec!["default".into()],
+        },
+        HarnessInfo {
+            id: "grok".to_string(),
+            name: "Grok Build".to_string(),
+            short_name: "Grok".to_string(),
+            binary: "grok".to_string(),
+            accent: "#E7E5E4".to_string(),
+            accent_soft: "rgba(231, 229, 228, 0.16)".to_string(),
+            available: check_bin("grok"),
+            version: String::new(),
+            models: crate::settings::native_models("grok"),
+            efforts: efforts.clone(),
+        },
     ];
     crate::settings::apply(&mut harnesses);
     harnesses
+}
+
+/// Process name for a harness. Cursor's id is `cursor`; the CLI is `cursor-agent`.
+pub fn binary_name(harness: &str) -> &str {
+    match harness {
+        "cursor" => "cursor-agent",
+        other => other,
+    }
 }
 
 pub fn resolve_bin_path(name: &str) -> Option<PathBuf> {
@@ -624,11 +653,37 @@ pub fn resolve_bin_path(name: &str) -> Option<PathBuf> {
     None
 }
 
+/// Bare Claude CLI aliases (`opus`/`sonnet`/`haiku`) are only valid on a
+/// Claude thread. After a harness switch a stored/selected Claude alias can
+/// reach another harness's turn, and the other CLI rejects the id outright.
+/// `default` and empty selections are harness-neutral; unrecognized ids are
+/// never foreign — they are the harness's own native model ids (AGY's
+/// `claude-opus-5-5-medium` included) and must pass through unchanged.
+pub fn foreign_model_in(harness: &str, model: &str) -> bool {
+    let id = model.trim();
+    if id.is_empty() || id == "default" || id == "cli-default" {
+        return false;
+    }
+    matches!(id, "opus" | "sonnet" | "haiku") && harness != "claude"
+}
+
 fn check_bin(name: &str) -> bool {
     resolve_bin_path(name).is_some()
 }
 
 pub fn humanize_model_name(harness: &str, raw_model: &str) -> (String, String) {
+    // Mid-thread harness switches must not leak a stale model id across:
+    // a bare Claude alias (`opus`) handed to Codex fails outright with
+    // "model is not supported when using Codex with a ChatGPT account"
+    // (seen live on 2026-11-06). `"default"` is valid on every harness and
+    // lets the harness's own configuration decide. Unknown ids pass through:
+    // they are the harnesses' own native ids, AGY's `claude-opus-5-5-medium`
+    // included.
+    let raw_model = if foreign_model_in(harness, raw_model) {
+        "default"
+    } else {
+        raw_model
+    };
     // Codex IDs are opaque. Never turn Sol/Terra or a future model into Astra.
     if harness == "codex" {
         let id = raw_model.trim();
@@ -642,7 +697,7 @@ pub fn humanize_model_name(harness: &str, raw_model: &str) -> (String, String) {
             .unwrap_or_else(|| id.to_string());
         return (id.to_string(), label);
     }
-    if matches!(harness, "agy" | "opencode" | "keel") {
+    if matches!(harness, "agy" | "opencode" | "keel" | "cursor" | "grok") {
         let id = raw_model.trim();
         if id.is_empty() || id == "default" || id == "cli-default" {
             return ("default".into(), "Configured default".into());
@@ -783,12 +838,59 @@ mod tests {
             humanize_model_name("keel", "bonsai-9b"),
             ("bonsai-9b".to_string(), "Bonsai 2 9B (Local)".to_string())
         );
+        assert_eq!(humanize_model_name("cursor", "composer-2").0, "composer-2");
+        assert_eq!(humanize_model_name("cursor", "opus").0, "default");
     }
 
     #[test]
-    fn test_default_harnesses_includes_all_five() {
+    fn test_default_harnesses_includes_installed_adapters() {
         let harnesses = default_harnesses();
         let ids: Vec<&str> = harnesses.iter().map(|h| h.id.as_str()).collect();
-        assert_eq!(ids, vec!["claude", "agy", "codex", "opencode", "keel"]);
+        assert_eq!(
+            ids,
+            vec!["claude", "agy", "codex", "opencode", "keel", "cursor", "grok"]
+        );
+        let cursor = harnesses.iter().find(|h| h.id == "cursor").unwrap();
+        assert_eq!(cursor.binary, "cursor-agent");
+        assert_eq!(cursor.available, check_bin("cursor-agent"));
+        assert_eq!(binary_name("cursor"), "cursor-agent");
+        assert_eq!(binary_name("keel"), "keel");
+        assert_eq!(binary_name("grok"), "grok");
+        let grok = harnesses.iter().find(|h| h.id == "grok").unwrap();
+        assert_eq!(grok.binary, "grok");
+        assert_eq!(grok.available, check_bin("grok"));
+    }
+
+    #[test]
+    fn test_foreign_model_in_detects_leaked_claude_alias() {
+        // The 2026-11-06 regression: a Codex turn carrying the Claude alias
+        // `opus` fails the whole turn.
+        assert!(foreign_model_in("codex", "opus"));
+        assert!(foreign_model_in("agy", "sonnet"));
+        assert!(foreign_model_in("keel", "haiku"));
+        assert!(foreign_model_in("cursor", "opus"));
+        assert!(foreign_model_in("grok", "opus"));
+        // Claude keeps its own aliases, harness-neutral ids pass everywhere,
+        // and a harness's native ids (AGY's claude-* native id included) are
+        // never foreign.
+        assert!(!foreign_model_in("claude", "opus"));
+        assert!(!foreign_model_in("codex", "default"));
+        assert!(!foreign_model_in("agy", "claude-opus-5-5-medium"));
+        assert!(!foreign_model_in("codex", "gpt-6.1-sol"));
+        assert!(!foreign_model_in("keel", ""));
+    }
+
+    #[test]
+    fn test_humanize_neutralizes_foreign_claude_alias() {
+        // Codex receives the raw id, so a leaked `opus` must become the
+        // harness default, not the Claude id.
+        assert_eq!(
+            humanize_model_name("codex", "opus"),
+            (
+                "default".to_string(),
+                "Codex configured default".to_string()
+            )
+        );
+        assert_eq!(humanize_model_name("claude", "opus").0, "opus");
     }
 }

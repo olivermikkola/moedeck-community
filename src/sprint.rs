@@ -1,4 +1,4 @@
-use crate::discovery::{config_dir, home_dir, sanitize_workdir, save_overlay};
+use crate::discovery::{config_dir, home_dir, load_overlays, sanitize_workdir, save_overlay};
 use crate::models::{
     CreateSprintRequest, CreateSprintStep, SendMessageRequest, SprintItem, SprintStatus,
     SprintStep, StepStatus, StoredThreadOverlay,
@@ -179,28 +179,40 @@ impl SprintManager {
         Ok(sprint)
     }
 
-    pub async fn cancel_sprint(&self, id: &str) -> Result<(), String> {
+    pub async fn cancel_sprint(&self, id: &str, runner: &RunnerState) -> Result<(), String> {
         let mut map = self.sprints.write().await;
         let item = map
             .get_mut(id)
             .ok_or_else(|| format!("Sprint `{}` not found", id))?;
 
+        let running_ids: Vec<String> = item
+            .steps
+            .iter()
+            .filter(|step| step.status == StepStatus::Running)
+            .filter_map(|step| step.conversation_id.clone())
+            .collect();
         item.status = SprintStatus::Cancelled;
         item.updated_at = Utc::now().timestamp_millis();
 
         for step in &mut item.steps {
             if step.status == StepStatus::Running || step.status == StepStatus::Pending {
                 step.status = StepStatus::Skipped;
+                step.completed_at = Some(Utc::now().timestamp_millis());
             }
         }
 
         if !cfg!(test) {
             save_persisted_sprints(&self.config_file, &map);
         }
+        drop(map);
+        for conversation in running_ids {
+            runner.stop_conversation(&conversation).await;
+        }
         Ok(())
     }
 
-    pub async fn delete_sprint(&self, id: &str) -> Result<(), String> {
+    pub async fn delete_sprint(&self, id: &str, runner: &RunnerState) -> Result<(), String> {
+        self.cancel_sprint(id, runner).await?;
         let mut map = self.sprints.write().await;
         map.remove(id)
             .ok_or_else(|| format!("Sprint `{}` not found", id))?;
@@ -252,6 +264,9 @@ impl SprintManager {
         {
             let mut map = self.sprints.write().await;
             if let Some(s) = map.get_mut(sprint_id) {
+                if s.status == SprintStatus::Cancelled {
+                    return;
+                }
                 s.status = SprintStatus::Running;
                 s.updated_at = Utc::now().timestamp_millis();
             }
@@ -267,22 +282,28 @@ impl SprintManager {
         let Some(sprint) = sprint_meta else { return };
 
         // Create a single shared conversation thread for this sprint
-        let conv_id = format!("helm:sprint:{}", &Uuid::new_v4().to_string()[..8]);
+        let conv_id = sprint
+            .steps
+            .iter()
+            .find_map(|step| step.conversation_id.clone())
+            .unwrap_or_else(|| format!("helm:sprint:{sprint_id}"));
         let now = Utc::now().timestamp_millis();
-        let overlay = StoredThreadOverlay {
-            id: conv_id.clone(),
-            title: Some(format!("🏃 {}", sprint.title)),
-            pinned: true,
-            harness: Some(sprint.harness.clone()),
-            model: sprint.model.clone(),
-            effort: Some("high".to_string()),
-            workdir: Some(sprint.workdir.clone()),
-            profile: sprint.profile.clone(),
-            created_at: now,
-            updated_at: now,
-            appended_messages: Vec::new(),
-            native_session: None,
-        };
+        let overlay = load_overlays()
+            .remove(&conv_id)
+            .unwrap_or_else(|| StoredThreadOverlay {
+                id: conv_id.clone(),
+                title: Some(format!("🏃 {}", sprint.title)),
+                pinned: true,
+                harness: Some(sprint.harness.clone()),
+                model: sprint.model.clone(),
+                effort: Some("high".to_string()),
+                workdir: Some(sprint.workdir.clone()),
+                profile: sprint.profile.clone(),
+                created_at: now,
+                updated_at: now,
+                appended_messages: Vec::new(),
+                native_session: None,
+            });
         save_overlay(&overlay);
 
         let total_steps = sprint.steps.len();
@@ -307,6 +328,9 @@ impl SprintManager {
             {
                 let mut map = self.sprints.write().await;
                 if let Some(s) = map.get_mut(sprint_id) {
+                    if s.status == SprintStatus::Cancelled {
+                        return;
+                    }
                     if let Some(step) = s.steps.get_mut(step_idx) {
                         step.status = StepStatus::Running;
                         step.started_at = Some(Utc::now().timestamp_millis());
@@ -350,8 +374,19 @@ impl SprintManager {
                 images: Vec::new(),
             };
 
-            let turn_res =
-                dispatch_turn_with_outcome(runner.clone(), conv_id.clone(), send_req).await;
+            let turn_res = {
+                // Cancellation takes the write lock. Hold a read lock until
+                // dispatch registers its abort handle, closing the gap between
+                // the status check and starting the subprocess.
+                let map = self.sprints.read().await;
+                if !map
+                    .get(sprint_id)
+                    .is_some_and(|s| s.status != SprintStatus::Cancelled)
+                {
+                    return;
+                }
+                dispatch_turn_with_outcome(runner.clone(), conv_id.clone(), send_req).await
+            };
 
             // Wait for the real turn outcome (process exit status) instead of
             // guessing from a busy-state string — see dispatch_turn_with_outcome.
@@ -366,6 +401,9 @@ impl SprintManager {
                 Err(e) => {
                     let mut map = self.sprints.write().await;
                     if let Some(s) = map.get_mut(sprint_id) {
+                        if s.status == SprintStatus::Cancelled {
+                            return;
+                        }
                         if let Some(step) = s.steps.get_mut(step_idx) {
                             step.status = StepStatus::Failed;
                             step.error = Some(e);
@@ -391,6 +429,9 @@ impl SprintManager {
             {
                 let mut map = self.sprints.write().await;
                 if let Some(s) = map.get_mut(sprint_id) {
+                    if s.status == SprintStatus::Cancelled {
+                        return;
+                    }
                     if let Some(step) = s.steps.get_mut(step_idx) {
                         step.status = if step_success {
                             StepStatus::Passed
@@ -419,6 +460,9 @@ impl SprintManager {
         {
             let mut map = self.sprints.write().await;
             if let Some(s) = map.get_mut(sprint_id) {
+                if s.status == SprintStatus::Cancelled {
+                    return;
+                }
                 s.status = SprintStatus::Completed;
                 s.updated_at = Utc::now().timestamp_millis();
             }
@@ -543,15 +587,22 @@ mod tests {
             }],
         };
 
-        let sprint = mgr.create_sprint(req, runner).await.unwrap();
+        let sprint = mgr.create_sprint(req, runner.clone()).await.unwrap();
         assert_eq!(sprint.title, "Test Sprint");
         assert_eq!(sprint.steps.len(), 1);
 
         let retrieved = mgr.get_sprint(&sprint.id).await;
         assert!(retrieved.is_some());
 
-        mgr.cancel_sprint(&sprint.id).await.unwrap();
+        mgr.cancel_sprint(&sprint.id, &runner).await.unwrap();
         let cancelled = mgr.get_sprint(&sprint.id).await.unwrap();
         assert_eq!(cancelled.status, SprintStatus::Cancelled);
+        // Let the queued execution task run after cancellation. It must not
+        // reset Cancelled to Running at loop startup.
+        tokio::task::yield_now().await;
+        assert_eq!(
+            mgr.get_sprint(&sprint.id).await.unwrap().status,
+            SprintStatus::Cancelled
+        );
     }
 }

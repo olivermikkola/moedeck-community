@@ -24,6 +24,7 @@ pub fn claude_tool_summary(name: &str, input: Option<&Value>) -> String {
             inp.get("description")
                 .or_else(|| inp.get("command"))
                 .or_else(|| inp.get("file_path"))
+                .or_else(|| inp.get("path"))
                 .or_else(|| inp.get("pattern"))
                 .or_else(|| inp.get("url"))
                 .or_else(|| inp.get("query"))

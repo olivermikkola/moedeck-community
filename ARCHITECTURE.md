@@ -1,6 +1,6 @@
 # Architecture: MoE Deck
 
-MoE Deck is structured as a single-binary Rust daemon (`moedeck`) that bridges mobile/desktop Progressive Web App (PWA) clients over Tailscale/LAN to local CLI coding harnesses (`claude`, `agy`, `codex`, `opencode`).
+MoE Deck is structured as a single-binary Rust daemon (`moedeck`) that bridges mobile/desktop Progressive Web App (PWA) clients over Tailscale/LAN to local CLI coding harnesses (`claude`, `agy`, `codex`, `opencode`, `keel`, `cursor-agent`, `grok`).
 
 ```
 +-----------------------------------------------------------------------+
@@ -53,7 +53,7 @@ When the user sends a prompt from MoE Deck, `dispatch_turn` normalizes differenc
 Each harness child is spawned with piped stdin so the interactive approval broker (`approval.rs`) can answer `[y/N]` prompts observed in the stream by writing `y\n`/`n\n` back into the live process (`RunnerState::send_stdin`). CLIs that check `isatty(STDIN_FILENO)` still stream immediately, because the prompt is passed as an argv (`-p`) rather than waited on over stdin.
 
 ### Per-Account Shadow Homes (`src/profiles.rs`)
-One harness can be driven with **multiple accounts in parallel**. Every non-default account runs its CLI with `HOME` re-rooted to a *shadow home* under `~/.config/moedeck/profiles/<id>/home`: a symlink mirror of the real `$HOME` (so `~/Projects`, `.gitconfig`, binaries and caches behave normally) except the harness's isolation paths (`~/.gemini`, `~/.claude`, `~/.codex`, `~/.keel`, opencode's `XDG` data/config dirs) — those are private real directories where only that account signs in. Conversation ids carry the account (`agy:agy-2:<session>`), discovery scans every account's home, and the overlay pins a MoE Deck thread to its account across restarts. The default account is never touched: its "profile" is simply the real home, and deleting a profile unregisters it without deleting credentials unless `?purge=1`.
+One harness can be driven with **multiple accounts in parallel**. Every non-default account runs its CLI with `HOME` re-rooted to a *shadow home* under `~/.config/moedeck/profiles/<id>/home`: a symlink mirror of the real `$HOME` (so `~/Projects`, `.gitconfig`, binaries and caches behave normally) except the harness's isolation paths (`~/.gemini`, `~/.claude`, `~/.codex`, `~/.keel`, `~/.cursor`, `~/.grok`, opencode's `XDG` data/config dirs) — those are private real directories where only that account signs in. Conversation ids carry the account (`agy:agy-2:<session>`), discovery scans every account's home, and the overlay pins a MoE Deck thread to its account across restarts. The default account is never touched: its "profile" is simply the real home, and deleting a profile unregisters it without deleting credentials unless `?purge=1`.
 
 ### Lock-Safe Execution & Context Handoff
 If a native session is currently open and locked by another process (for example, an active `claude` session with `status: "busy"` in `~/.claude/sessions/*.json` or an open `agy` session), passing `--resume <id>` or `--conversation <id>` would either block or fail on session lock acquisition.

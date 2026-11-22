@@ -336,8 +336,22 @@ impl ApprovalManager {
 
         {
             let mut p = self.pending.write().await;
-            p.insert(id.clone(), InnerApproval { item, tx: Some(tx) });
+            p.insert(
+                id.clone(),
+                InnerApproval {
+                    item: item.clone(),
+                    tx: Some(tx),
+                },
+            );
         }
+        crate::webhooks::notify_approval_needed(
+            &item.conversation_id,
+            &item.harness,
+            &item.tool_name,
+            &item.target,
+            item.details.as_deref(),
+            item.risk_level,
+        );
 
         let id_for_timeout = id.clone();
         let timeout_fut = tokio::time::sleep(tokio::time::Duration::from_secs(timeout_secs));

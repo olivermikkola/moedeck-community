@@ -23,10 +23,12 @@ knobs involved (e.g. `MOEDECK_PASSCODE`).
 - **Passcode auth** — every peer must complete cookie login; comparisons are constant-time
   over SHA-256 digests.
 - **Per-session cookies with revocation** — each login issues a unique,
-  expiring HMAC token (`SESSION_TTL_SECS`); changing the passcode
-  invalidates every cookie issued before that moment.
+  expiring HMAC token (`SESSION_TTL_SECS`); changing or disabling the passcode
+  (or manifesting any future "log out everywhere") invalidates every cookie
+  issued before that moment. Users will need to re-login after upgrading from
+  the older static-cookie scheme.
 - **Always a passcode** — the first start generates a random one (`moedeck pair`
-  shows it; the daemon never writes it or a login link to its log). Every non-public request needs a logged-in session, whatever
+  shows it). Every non-public request needs a logged-in session, whatever
   network it comes from: loopback, LAN and Tailscale peers included. The
   passcode can be changed but not switched off. Older configs' `trust_tailscale`
   key is ignored.
@@ -43,14 +45,18 @@ knobs involved (e.g. `MOEDECK_PASSCODE`).
   pages cannot `postMessage` to arbitrary origins; hung dev servers cannot pin
   the daemon (header/body/connect timeouts). Remaining theoretical gap: any
   local port's HTML still executes inside MoE Deck's origin once *you* open its
-  preview — only preview content you trust. A separate preview origin is
-  planned.
-- **Native approvals** — supported native approval requests are forwarded to
-  the cockpit before execution. Support and permissions vary by harness and
-  safety mode; tool progress is not itself an approval request. See the
-  harness-specific sections in the README before relying on an approval flow.
-- **Owner-only config** — `~/.config/moedeck` (chats, uploads, extra
-  accounts' sign-ins) is kept at mode `0700`; `auth.json` and the TUI token
-  are `0600`.
+  preview — treat preview tabs of untrusted content like browser tabs, and see
+  the roadmap item for a dedicated preview origin.
+- **HITL approvals** — risk classification reads the actual tool input payload
+  (command/script/path), not the model-written description, with a broad
+  exec/write/net tool-name table. Shell-like tools prompt in Standard mode;
+  `OpenCode --auto` is only passed outside Safe mode; High/Critical items
+  always re-prompt even after "Allow always"; one tap never grants a wildcard
+  for future calls.
 - **Login lockout** — 20 consecutive failed passcodes (parallel attempts
   included) lock login for 5 minutes.
+- **Outbound webhooks are off** until `webhooks.json` or `MOEDECK_WEBHOOK_*`
+  names a target. Payloads are a short summary plus a conversation path;
+  passcodes, session tokens, API keys, and full transcripts are redacted.
+  Secret header values stay in the owner-only config (or an env var) and are
+  not written to logs. See [docs/webhooks.md](docs/webhooks.md).

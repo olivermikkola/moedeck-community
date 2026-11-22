@@ -4,9 +4,14 @@ mod bounce;
 mod claude_rc;
 mod codex;
 mod completion;
+mod cursor;
 mod discovery;
+mod goals;
+mod grok;
+mod harness_status;
 mod install;
 mod models;
+mod native_status;
 mod ops;
 mod profiles;
 mod proxy;
@@ -18,6 +23,7 @@ mod tui;
 mod ui;
 mod update;
 mod voice;
+mod webhooks;
 
 use crate::auth::{
     is_allowed_host_header, is_safe_mutation_request, is_safe_preview_mutation, load_auth_config,
@@ -29,6 +35,7 @@ use crate::discovery::{
     inspect_git_diff, inspect_workspace, list_all_conversations, list_projects,
     list_workspace_files, load_overlays, sanitize_workdir, save_overlay,
 };
+use crate::goals::GoalManager;
 use crate::models::{
     default_harnesses, CreateConversationRequest, CreateSprintRequest, CreateWorktreeRequest,
     PrActionRequest, RemoveWorktreeRequest, SecondOpinionRequest, SendMessageRequest,
@@ -119,6 +126,9 @@ async fn main() -> anyhow::Result<()> {
         println!("  pair             display mobile pairing URL & active cockpit passcode");
         println!("  passcode [code]  view or set cockpit authentication passcode");
         println!("  login <id>       log an extra account in (e.g. `moedeck login agy-2`)");
+        println!("  goal [command]   manage MoE Deck Big Goals, subgoals & autonomous triage");
+        println!("  webhook          show outbound webhook targets (values stay hidden)");
+        println!("  webhook test     send one test event to the configured targets");
         println!();
         println!("options:");
         println!("  -h, --help       show this help");
@@ -130,6 +140,9 @@ async fn main() -> anyhow::Result<()> {
         println!("  MOEDECK_PASSCODE    cockpit passcode (overrides auth.json)");
         println!(
             "  MOEDECK_CONFIG_DIR  where chats and settings live (default: ~/.config/moedeck)"
+        );
+        println!(
+            "  MOEDECK_WEBHOOK_URL optional outbound hook (off unless set; see docs/webhooks.md)"
         );
         println!("  (the older HELM_* names still work)");
         return Ok(());
@@ -163,6 +176,13 @@ async fn main() -> anyhow::Result<()> {
             return if dry_run { Ok(()) } else { run_pair(port) };
         }
         Some("uninstall") => return install::run_uninstall(),
+        Some("goal") => return goals::run_cli(&args[2..], port).await,
+        Some("webhook") => {
+            let origin = detect_tailscale_host()
+                .or_else(detect_lan_ip)
+                .map(|host| format!("http://{host}:{port}"));
+            return webhooks::run_cli(&args[2..], origin).await;
+        }
         _ => {}
     }
     if args.iter().any(|a| a == "pair") {
@@ -198,12 +218,18 @@ async fn main() -> anyhow::Result<()> {
     let runner = RunnerState::new();
     let swarm_mgr = SwarmManager::new();
     let sprint_mgr = SprintManager::new();
+    let goal_mgr = GoalManager::new();
 
     // Re-arm queued/running sprints left behind by a previous daemon run.
     let resumed = sprint_mgr.clone().resume_incomplete(runner.clone()).await;
     if resumed > 0 {
         println!("  Sprint engine resumed {} incomplete sprint(s)", resumed);
     }
+    let resumed_goals = goal_mgr.clone().resume_incomplete(runner.clone()).await;
+    if resumed_goals > 0 {
+        println!("  Goal engine resumed {} incomplete goal(s)", resumed_goals);
+    }
+    let _goal_scheduler = goal_mgr.clone().start_scheduler(runner.clone());
 
     let auth_cfg = auth::load_auth_config();
     let startup_token = auth::issue_session_token(&auth_cfg);
@@ -225,7 +251,8 @@ async fn main() -> anyhow::Result<()> {
     println!(
         "  Harnesses:      {}",
         if installed.is_empty() {
-            "none installed yet (claude, codex, agy, opencode or keel)".to_string()
+            "none installed yet (claude, codex, agy, opencode, keel, cursor-agent or grok)"
+                .to_string()
         } else {
             installed.join(" | ")
         }
@@ -235,6 +262,13 @@ async fn main() -> anyhow::Result<()> {
         println!("  Extra accounts: {}", account_summary);
     }
     println!("====================================================");
+
+    let hooks = webhooks::install(|| {
+        detect_tailscale_host()
+            .or_else(detect_lan_ip)
+            .map(|host| format!("http://{host}:{port}"))
+    });
+    spawn_stall_watch(hooks, runner.clone());
 
     let shutdown = shutdown_signal();
     tokio::pin!(shutdown);
@@ -247,6 +281,7 @@ async fn main() -> anyhow::Result<()> {
         let runner_ref = runner.clone();
         let swarm_ref = swarm_mgr.clone();
         let sprint_ref = sprint_mgr.clone();
+        let goal_ref = goal_mgr.clone();
 
         tokio::spawn(async move {
             let svc = service_fn(move |req| {
@@ -256,6 +291,7 @@ async fn main() -> anyhow::Result<()> {
                     runner_ref.clone(),
                     swarm_ref.clone(),
                     sprint_ref.clone(),
+                    goal_ref.clone(),
                 )
             });
             let _ = http1::Builder::new().serve_connection(io, svc).await;
@@ -263,6 +299,36 @@ async fn main() -> anyhow::Result<()> {
     }
     runner.remote_controls.stop_all();
     Ok(())
+}
+
+fn spawn_stall_watch(hooks: Arc<webhooks::Dispatcher>, runner: Arc<RunnerState>) {
+    if !hooks.wants_session_stalled() {
+        return;
+    }
+    tokio::spawn(async move {
+        let mut seen = std::collections::HashSet::new();
+        loop {
+            tokio::time::sleep(Duration::from_secs(webhooks::STALL_POLL_SECS)).await;
+            let active = runner.active_snapshot().await;
+            let activity = runner.activity_snapshot().await;
+            let needs_you: std::collections::HashSet<String> = runner
+                .approvals
+                .list_pending()
+                .await
+                .into_iter()
+                .map(|item| item.conversation_id)
+                .collect();
+            let notices = tokio::task::spawn_blocking(move || {
+                let report = harness_status::collect(&active, &activity, &needs_you);
+                webhooks::stall_notices(&report)
+            })
+            .await
+            .unwrap_or_default();
+            for notice in webhooks::newly_stalled(&mut seen, notices) {
+                hooks.notify_stalled(notice);
+            }
+        }
+    });
 }
 
 async fn shutdown_signal() {
@@ -284,6 +350,7 @@ async fn handle_request(
     runner: Arc<RunnerState>,
     swarm_mgr: Arc<SwarmManager>,
     sprint_mgr: Arc<SprintManager>,
+    goal_mgr: Arc<GoalManager>,
 ) -> Result<Response<Full<Bytes>>, Infallible> {
     let host_hdr: Option<String> = req
         .headers()
@@ -330,7 +397,7 @@ async fn handle_request(
                     );
                     return Ok(Response::builder()
                         .status(StatusCode::FOUND)
-                        .header("Location", "/")
+                        .header("Location", webhooks::location_after_login(q))
                         .header("Set-Cookie", cookie)
                         .body(Full::from(Bytes::new()))
                         .unwrap());
@@ -772,6 +839,7 @@ async fn handle_request(
             let safety_mode = runner.approvals.get_safety_mode().await;
             let swarm_sessions = swarm_mgr.list_sessions().await;
             let sprints = sprint_mgr.list_sprints().await;
+            let goals = goal_mgr.list_goals().await;
             Ok(json_response(
                 StatusCode::OK,
                 &json!({
@@ -782,6 +850,7 @@ async fn handle_request(
                     "safety_mode": safety_mode,
                     "swarm_sessions": swarm_sessions,
                     "sprints": sprints,
+                    "goals": goals,
                     "profiles": profiles::profile_items(),
                     "home": home_str(),
                 }),
@@ -828,6 +897,94 @@ async fn handle_request(
             }
         }
 
+        (&Method::GET, "/api/goals") => {
+            let list = goal_mgr.list_goals().await;
+            Ok(json_response(StatusCode::OK, &json!({ "goals": list })))
+        }
+
+        (&Method::POST, "/api/goals") => {
+            let body_bytes = read_body(req).await;
+            if let Ok(create_req) = serde_json::from_slice::<goals::CreateGoalRequest>(&body_bytes)
+            {
+                match goal_mgr.create_goal(create_req).await {
+                    Ok(goal) => Ok(json_response(StatusCode::OK, &goal)),
+                    Err(e) => Ok(json_response(
+                        StatusCode::BAD_REQUEST,
+                        &json!({ "error": e }),
+                    )),
+                }
+            } else {
+                Ok(json_response(
+                    StatusCode::BAD_REQUEST,
+                    &json!({ "error": "Invalid goal creation request body" }),
+                ))
+            }
+        }
+
+        (&Method::POST, "/api/goals/template/vm-lab") => {
+            let body_bytes = read_body(req).await;
+            #[derive(serde::Deserialize)]
+            struct VmLabPayload {
+                workdir: Option<String>,
+                schedule: Option<String>,
+            }
+            let payload: VmLabPayload =
+                serde_json::from_slice(&body_bytes).unwrap_or(VmLabPayload {
+                    workdir: None,
+                    schedule: None,
+                });
+            let workdir = payload
+                .workdir
+                .unwrap_or_else(|| "/home/ada/projects/vm-lab".to_string());
+            let template_req =
+                goals::create_vm_lab_assessment_goal(&workdir, payload.schedule.as_deref());
+            match goal_mgr.create_goal(template_req).await {
+                Ok(goal) => Ok(json_response(StatusCode::OK, &goal)),
+                Err(e) => Ok(json_response(
+                    StatusCode::BAD_REQUEST,
+                    &json!({ "error": e }),
+                )),
+            }
+        }
+
+        (&Method::GET, "/api/agents") => {
+            let active = runner.active_snapshot().await;
+            let activity = runner.activity_snapshot().await;
+            let needs_you: std::collections::HashSet<String> = runner
+                .approvals
+                .list_pending()
+                .await
+                .into_iter()
+                .map(|p| p.conversation_id)
+                .collect();
+            match blocking("agent status", move || {
+                harness_status::collect(&active, &activity, &needs_you)
+            })
+            .await
+            {
+                Ok(report) => Ok(json_response(StatusCode::OK, &json!(report))),
+                Err(resp) => Ok(resp),
+            }
+        }
+
+        (&Method::POST, "/api/agents/color") => {
+            let body = read_body(req).await;
+            let Ok(change) = serde_json::from_slice::<harness_status::ColorChange>(&body) else {
+                return Ok(json_response(
+                    StatusCode::BAD_REQUEST,
+                    &json!({ "error": "Invalid colour change" }),
+                ));
+            };
+            match blocking("agent colour", move || harness_status::set_color(change)).await {
+                Ok(Ok(())) => Ok(json_response(StatusCode::OK, &json!({ "ok": true }))),
+                Ok(Err(error)) => Ok(json_response(
+                    StatusCode::BAD_REQUEST,
+                    &json!({ "error": error }),
+                )),
+                Err(resp) => Ok(resp),
+            }
+        }
+
         (&Method::GET, "/api/swarm") => {
             let sessions = swarm_mgr.list_sessions().await;
             Ok(json_response(
@@ -871,13 +1028,25 @@ async fn handle_request(
         }
 
         (&Method::GET, "/api/projects") => {
-            let projects = match blocking("project list", list_projects).await {
-                Ok(p) => p,
+            // `recent`: newline-separated folders of recent conversations;
+            // only the ones that still exist come back.
+            let recent_raw = extract_query_param(&query, "recent")
+                .map(|r| url_decode(&r))
+                .unwrap_or_default();
+            let result = blocking("project list", move || {
+                let recent = discovery::existing_workdirs(
+                    recent_raw.lines().filter(|l| !l.is_empty()).take(30),
+                );
+                (list_projects(), recent)
+            })
+            .await;
+            let (projects, recent) = match result {
+                Ok(r) => r,
                 Err(resp) => return Ok(resp),
             };
             Ok(json_response(
                 StatusCode::OK,
-                &json!({ "projects": projects }),
+                &json!({ "projects": projects, "recent": recent }),
             ))
         }
 
@@ -1194,6 +1363,7 @@ async fn handle_request(
                     transcript: String::new(),
                     intent: VoiceIntent::ChatPrompt(String::new()),
                     engine: "error".to_string(),
+                    error: Some("Transcription failed.".into()),
                 });
                 return Ok(json_response(StatusCode::OK, &resp));
             }
@@ -1201,6 +1371,63 @@ async fn handle_request(
                 StatusCode::BAD_REQUEST,
                 &json!({ "error": "Invalid voice transcribe payload" }),
             ))
+        }
+
+        (&Method::POST, "/api/webhooks/test") => {
+            let body_bytes = read_body(req).await;
+            let requested = if body_bytes.is_empty() {
+                None
+            } else {
+                match serde_json::from_slice::<serde_json::Value>(&body_bytes) {
+                    Ok(value) => value
+                        .get("event")
+                        .and_then(|v| v.as_str())
+                        .map(str::to_string),
+                    Err(_) => {
+                        return Ok(json_response(
+                            StatusCode::BAD_REQUEST,
+                            &json!({ "error": "Invalid webhook test payload" }),
+                        ));
+                    }
+                }
+            };
+            let event = match requested.as_deref() {
+                None => webhooks::EventKind::TurnFinished,
+                Some(name) => match webhooks::EventKind::parse(name) {
+                    Some(event) => event,
+                    None => {
+                        return Ok(json_response(
+                            StatusCode::BAD_REQUEST,
+                            &json!({
+                                "error": "event must be approval_needed, turn_finished, or session_stalled"
+                            }),
+                        ));
+                    }
+                },
+            };
+            match webhooks::test_installed(event).await {
+                Ok(report) => {
+                    for result in &report.results {
+                        if !result.ok {
+                            eprintln!(
+                                "webhook: test delivery failed target={} error={}",
+                                result.target,
+                                result.error.as_deref().unwrap_or("delivery failed")
+                            );
+                        }
+                    }
+                    let status = if report.failed() > 0 {
+                        StatusCode::BAD_GATEWAY
+                    } else {
+                        StatusCode::OK
+                    };
+                    Ok(json_response(status, &report.json()))
+                }
+                Err(error) => Ok(json_response(
+                    StatusCode::CONFLICT,
+                    &json!({ "error": error }),
+                )),
+            }
         }
 
         (&Method::GET, "/api/local-image") => {
@@ -1422,7 +1649,7 @@ async fn handle_request(
                 if let Some(id_enc) = rest.strip_suffix("/cancel") {
                     if method == Method::POST {
                         let sprint_id = url_decode(id_enc);
-                        match sprint_mgr.cancel_sprint(&sprint_id).await {
+                        match sprint_mgr.cancel_sprint(&sprint_id, &runner).await {
                             Ok(()) => {
                                 return Ok(json_response(StatusCode::OK, &json!({ "ok": true })))
                             }
@@ -1436,7 +1663,7 @@ async fn handle_request(
                     }
                 } else if method == Method::DELETE {
                     let sprint_id = url_decode(rest);
-                    match sprint_mgr.delete_sprint(&sprint_id).await {
+                    match sprint_mgr.delete_sprint(&sprint_id, &runner).await {
                         Ok(()) => return Ok(json_response(StatusCode::OK, &json!({ "ok": true }))),
                         Err(e) => {
                             return Ok(json_response(
@@ -1453,6 +1680,102 @@ async fn handle_request(
                         return Ok(json_response(
                             StatusCode::NOT_FOUND,
                             &json!({ "error": "Sprint not found" }),
+                        ));
+                    }
+                }
+            }
+
+            if let Some(rest) = path.strip_prefix("/api/goals/") {
+                if let Some(id_enc) = rest.strip_suffix("/tick") {
+                    if method == Method::POST {
+                        let goal_id = url_decode(id_enc);
+                        match goal_mgr.tick_goal(&goal_id, runner.clone()).await {
+                            Ok(outcome) => {
+                                return Ok(json_response(
+                                    StatusCode::OK,
+                                    &json!({ "outcome": outcome }),
+                                ))
+                            }
+                            Err(e) => {
+                                return Ok(json_response(
+                                    StatusCode::BAD_REQUEST,
+                                    &json!({ "error": e }),
+                                ))
+                            }
+                        }
+                    }
+                } else if let Some(id_enc) = rest.strip_suffix("/pause") {
+                    if method == Method::POST {
+                        let goal_id = url_decode(id_enc);
+                        match goal_mgr.pause_goal(&goal_id).await {
+                            Ok(()) => {
+                                return Ok(json_response(StatusCode::OK, &json!({ "ok": true })))
+                            }
+                            Err(e) => {
+                                return Ok(json_response(
+                                    StatusCode::BAD_REQUEST,
+                                    &json!({ "error": e }),
+                                ))
+                            }
+                        }
+                    }
+                } else if let Some(id_enc) = rest.strip_suffix("/resume") {
+                    if method == Method::POST {
+                        let goal_id = url_decode(id_enc);
+                        match goal_mgr.resume_goal(&goal_id).await {
+                            Ok(()) => {
+                                return Ok(json_response(StatusCode::OK, &json!({ "ok": true })))
+                            }
+                            Err(e) => {
+                                return Ok(json_response(
+                                    StatusCode::BAD_REQUEST,
+                                    &json!({ "error": e }),
+                                ))
+                            }
+                        }
+                    }
+                } else if let Some(id_enc) = rest.strip_suffix("/subgoals") {
+                    if method == Method::POST {
+                        let goal_id = url_decode(id_enc);
+                        let body_bytes = read_body(req).await;
+                        if let Ok(create_sub) =
+                            serde_json::from_slice::<goals::CreateSubgoalRequest>(&body_bytes)
+                        {
+                            match goal_mgr.add_subgoal(&goal_id, create_sub).await {
+                                Ok(sub) => return Ok(json_response(StatusCode::OK, &sub)),
+                                Err(e) => {
+                                    return Ok(json_response(
+                                        StatusCode::BAD_REQUEST,
+                                        &json!({ "error": e }),
+                                    ))
+                                }
+                            }
+                        } else {
+                            return Ok(json_response(
+                                StatusCode::BAD_REQUEST,
+                                &json!({ "error": "Invalid subgoal request body" }),
+                            ));
+                        }
+                    }
+                } else if method == Method::DELETE {
+                    let goal_id = url_decode(rest);
+                    match goal_mgr.delete_goal(&goal_id).await {
+                        Ok(()) => return Ok(json_response(StatusCode::OK, &json!({ "ok": true }))),
+                        Err(e) => {
+                            return Ok(json_response(
+                                StatusCode::BAD_REQUEST,
+                                &json!({ "error": e }),
+                            ))
+                        }
+                    }
+                } else if method == Method::GET {
+                    let goal_id = url_decode(rest);
+                    if let Some(goal) = goal_mgr.get_goal(&goal_id).await {
+                        return Ok(json_response(StatusCode::OK, &goal));
+                    } else {
+                        return Ok(json_response(
+                            StatusCode::NOT_FOUND,
+                            &json!({ "error": "Goal not found" }),
                         ));
                     }
                 }
@@ -1530,8 +1853,18 @@ async fn handle_request(
                         let conv_id = url_decode(id_enc);
                         let stopped = runner.stop_conversation(&conv_id).await;
                         return Ok(json_response(
-                            StatusCode::OK,
-                            &json!({ "stopped": stopped }),
+                            if stopped {
+                                StatusCode::OK
+                            } else {
+                                StatusCode::CONFLICT
+                            },
+                            &if stopped {
+                                json!({ "stopped": true })
+                            } else {
+                                json!({
+                                    "error": "No turn owned by MoE Deck is running. Stop native-app turns in their native app."
+                                })
+                            },
                         ));
                     }
                 } else if let Some(id_enc) = rest.strip_suffix("/second-opinion") {
@@ -2050,6 +2383,8 @@ fn run_doctor() -> anyhow::Result<()> {
         ("agy", "Antigravity CLI"),
         ("codex", "Codex CLI"),
         ("keel", "Keel Agent CLI"),
+        ("cursor-agent", "Cursor Agent CLI"),
+        ("grok", "Grok Build CLI"),
         ("git", "Git version control"),
         ("tailscale", "Tailscale mesh VPN"),
     ];
@@ -2059,13 +2394,13 @@ fn run_doctor() -> anyhow::Result<()> {
     for (bin, desc) in &tools {
         match which_binary(bin) {
             Some(path) => {
-                println!("  ✓ {:<10} {:<24} [{}]", bin, desc, path.display());
+                println!("  ✓ {:<13} {:<24} [{}]", bin, desc, path.display());
                 if *bin != "git" && *bin != "tailscale" {
                     found_any = true;
                 }
             }
             None => {
-                println!("  ○ {:<10} {:<24} (not found in PATH)", bin, desc);
+                println!("  ○ {:<13} {:<24} (not found in PATH)", bin, desc);
             }
         }
     }
@@ -2073,7 +2408,9 @@ fn run_doctor() -> anyhow::Result<()> {
     if !found_any {
         println!();
         println!("  ⚠️ No agent harness CLIs found in PATH!");
-        println!("     Install at least one of: claude, opencode, agy, codex, or keel.");
+        println!(
+            "     Install at least one of: claude, opencode, agy, codex, keel, cursor-agent, or grok."
+        );
     }
 
     println!();

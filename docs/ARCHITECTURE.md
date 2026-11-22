@@ -1,6 +1,6 @@
 # MoE Deck Architecture & Technical Specification
 
-MoE Deck is a lightweight, zero-overhead control daemon and mobile-first cockpit interface designed to bridge autonomous coding harnesses—including **Claude Code (`claude`)**, **Google Antigravity (`agy`)**, **Codex (`codex`)**, and **OpenCode (`opencode`)**—into a unified, real-time command surface.
+MoE Deck is a lightweight, zero-overhead control daemon and mobile-first cockpit interface designed to bridge autonomous coding harnesses—including **Claude Code (`claude`)**, **Google Antigravity (`agy`)**, **Codex (`codex`)**, **OpenCode (`opencode`)**, **Keel (`keel`)**, **Cursor Agent (`cursor-agent`)**, and **Grok Build (`grok`)**—into a unified, real-time command surface.
 
 ---
 
@@ -45,7 +45,7 @@ flowchart TD
 ## 2. Core Architectural Principles
 
 ### 2.1 Single-Binary, Self-Contained Deployment
-MoE Deck produces a single statically-linked or minimal-dependency Rust binary with zero external Node.js, Python, or Ruby runtime requirements.
+MoE Deck produces a single statically-linked or minimal-dependency Rust binary with zero external Node.js, Python, or Ruby runtime requirements. 
 - The entire web application (HTML5, PWA manifest, service worker hooks, embedded SVG icons, CSS styling, and reactive JavaScript) is embedded into the executable binary via compile-time inclusion (`ui.rs`).
 - Resource footprint idles at under **5 MB of resident RAM** and near-zero CPU usage when idle.
 
@@ -88,6 +88,9 @@ A zero-dependency, ultra-responsive web interface tailored for high-density mobi
   - **Antigravity**: Electric Blue (`#4F8FF7`)
   - **Codex**: Emerald Green (`#10A37F`)
   - **OpenCode**: Amethyst Purple (`#A855F7`)
+  - **Keel**: Cyan (`#06B6D4`)
+  - **Cursor**: Orange (`#F54E00`)
+  - **Grok Build**: Bone (`#E7E5E4`)
 - **Visual Render Surface**: Detects file references and image paths (e.g., `/tmp/*.png`, generated charts, 3D viewport renders) within agent output and renders them inline as interactive visual cards.
 - **Mobile Input Cockpit**: Dynamic multi-line input box with safe-area inset management for iOS Safari, quick harness selector dropdown, and image attachment handling.
 

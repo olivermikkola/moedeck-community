@@ -77,12 +77,17 @@ pub fn isolation_paths(harness: &str) -> &'static [&'static str] {
             ".config/opencode",
         ],
         "keel" => &[".keel"],
+        "cursor" => &[".cursor", ".config/cursor"],
+        "grok" => &[".grok"],
         _ => &[".helm-unknown-harness"],
     }
 }
 
 pub(crate) fn is_harness(harness: &str) -> bool {
-    matches!(harness, "claude" | "agy" | "codex" | "opencode" | "keel")
+    matches!(
+        harness,
+        "claude" | "agy" | "codex" | "opencode" | "keel" | "cursor" | "grok"
+    )
 }
 
 /// Load the profile registry. A missing/corrupt file yields an empty list.
@@ -273,6 +278,18 @@ pub fn child_env_overrides(harness: &str, id: &str) -> Vec<(String, String)> {
             "DBUS_SESSION_BUS_ADDRESS".to_string(),
             NO_KEYRING_BUS.to_string(),
         )),
+        // A profile must not share the default account's Cursor state when
+        // the daemon itself has CURSOR_CONFIG_DIR set.
+        "cursor" => env.push((
+            "CURSOR_CONFIG_DIR".to_string(),
+            home.join(".cursor").to_string_lossy().to_string(),
+        )),
+        // A profile must not share the default account's Grok state when the
+        // daemon itself has GROK_HOME set.
+        "grok" => env.push((
+            "GROK_HOME".to_string(),
+            home.join(".grok").to_string_lossy().to_string(),
+        )),
         _ => {}
     }
     env
@@ -399,11 +416,36 @@ pub fn remove_profile(id: &str, purge_data: bool) -> Result<(), String> {
 
 /// The argv used to log an account in from a real terminal:
 /// `HOME=<shadow> <binary>`. Surfaced in the UI and used by `moedeck login`.
+fn login_args(harness: &str) -> &'static [&'static str] {
+    match harness {
+        // A bare `cursor-agent` starts a session. Sign-in is its own command.
+        "cursor" => &["login"],
+        // A bare `grok` starts the TUI. `--device-auth` prints a code the phone can finish.
+        "grok" => &["login", "--device-auth"],
+        _ => &[],
+    }
+}
+
 pub fn login_command(harness: &str, id: &str) -> String {
-    let bin = resolve_bin_path(harness)
+    let bin_name = crate::models::binary_name(harness);
+    let bin = resolve_bin_path(bin_name)
         .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_else(|| harness.to_string());
-    format!("HOME={} {}", profile_home(id).to_string_lossy(), bin)
+        .unwrap_or_else(|| bin_name.to_string());
+    let home = profile_home(id);
+    let extra = login_args(harness);
+    if harness == "grok" {
+        // GROK_HOME keeps a daemon-level override from writing into the primary account.
+        format!(
+            "HOME={} GROK_HOME={} {bin} {}",
+            home.to_string_lossy(),
+            home.join(".grok").to_string_lossy(),
+            extra.join(" ")
+        )
+    } else if extra.is_empty() {
+        format!("HOME={} {bin}", home.to_string_lossy())
+    } else {
+        format!("HOME={} {bin} {}", home.to_string_lossy(), extra.join(" "))
+    }
 }
 
 /// `moedeck login <profile-id>`: exec the harness CLI interactively with the
@@ -413,14 +455,16 @@ pub fn exec_profile_login(profile_id: &str) -> anyhow::Result<()> {
         anyhow::anyhow!("No profile `{profile_id}` — create one in the cockpit first (harness pill → + Add account)")
     })?;
     let home = ensure_shadow_home(&profile.harness, &profile.id).map_err(|e| anyhow::anyhow!(e))?;
-    let bin = resolve_bin_path(&profile.harness)
-        .ok_or_else(|| anyhow::anyhow!("`{}` binary not found on this machine", profile.harness))?;
+    let bin_name = crate::models::binary_name(&profile.harness);
+    let bin = resolve_bin_path(bin_name)
+        .ok_or_else(|| anyhow::anyhow!("`{bin_name}` binary not found on this machine"))?;
     println!(
         "Logging `{}` into account [{}] — finish the sign-in flow in this terminal.",
         profile.harness, profile.id
     );
     println!("Credentials will be stored under {}", home.display());
     let status = std::process::Command::new(bin)
+        .args(login_args(&profile.harness))
         .envs(child_env_overrides(&profile.harness, &profile.id))
         .stdin(std::process::Stdio::inherit())
         .stdout(std::process::Stdio::inherit())
@@ -560,6 +604,22 @@ mod tests {
             .any(|(k, v)| k == "DBUS_SESSION_BUS_ADDRESS" && v == NO_KEYRING_BUS));
         let env = child_env_overrides("claude", "claude-2");
         assert!(!env.iter().any(|(k, _)| k == "DBUS_SESSION_BUS_ADDRESS"));
+        let env = child_env_overrides("cursor", "cursor-2");
+        assert!(env
+            .iter()
+            .any(|(k, v)| { k == "CURSOR_CONFIG_DIR" && v.ends_with("/cursor-2/home/.cursor") }));
+        let login = login_command("cursor", "cursor-2");
+        assert!(login.contains("cursor-agent login"));
+        assert!(login.contains("cursor-2"));
+        assert_eq!(isolation_paths("grok"), &[".grok"]);
+        let env = child_env_overrides("grok", "grok-2");
+        assert!(env
+            .iter()
+            .any(|(k, v)| k == "GROK_HOME" && v.ends_with("/grok-2/home/.grok")));
+        let login = login_command("grok", "grok-2");
+        assert!(login.contains("login --device-auth"));
+        assert!(login.contains("GROK_HOME="));
+        assert!(login.contains("grok-2"));
     }
 
     #[test]

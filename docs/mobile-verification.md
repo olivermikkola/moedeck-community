@@ -42,8 +42,11 @@ The real-run result was:
 {"real_harness":"Codex","turns":2,"native_session_preserved":true,"service_worker_reopen":true,"harness":"codex","project":"/tmp/helm-mobile-qa/real-project","safety":"safe","answer":"HELM-PHONE-PROOF-7K4","browser_errors":[]}
 ```
 
+The screenshots show the actual gateway and native conversation:
 
+![New conversation choices against the gateway](screenshots/new-conversation-live.png)
 
+![Real Codex recall after a service-worker reload; conversation and composer crop](screenshots/native-codex-resume-live.png)
 
 ## Remaining device verification
 

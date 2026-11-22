@@ -5,6 +5,16 @@ use crate::models::{ModelOption, ToolSummaryItem, TurnBlock};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 
+/// A profile has its own home; CODEX_HOME only overrides the primary account.
+pub fn state_dir(home: &std::path::Path) -> std::path::PathBuf {
+    if home == crate::discovery::home_dir() {
+        if let Some(path) = std::env::var_os("CODEX_HOME") {
+            return path.into();
+        }
+    }
+    home.join(".codex")
+}
+
 pub fn cached_models() -> Vec<ModelOption> {
     let root = std::env::var_os("CODEX_HOME")
         .map(std::path::PathBuf::from)

@@ -36,6 +36,8 @@ fn harness_glyph(id: &str) -> &'static str {
         "codex" => "⌘",
         "opencode" => "⬡",
         "keel" => "⚓",
+        "cursor" => "▸",
+        "grok" => "✦",
         _ => "•",
     }
 }
@@ -272,7 +274,9 @@ impl PaletteAction {
         match self {
             Self::NewThread => "start a thread with the selected harness/model",
             Self::SearchThreads => "find a thread by title, preview, harness or model",
-            Self::FilterHarness => "cycle All / Claude / AGY / Codex / OpenCode / Keel",
+            Self::FilterHarness => {
+                "cycle All / Claude / AGY / Codex / OpenCode / Keel / Cursor / Grok"
+            }
             Self::ModelPicker => "pick a harness and a model/provider",
             Self::Approvals => "review and decide pending tool approvals",
             Self::CycleSafety => "safe → standard → yolo",
@@ -438,7 +442,9 @@ impl App {
     fn cycle_harness_filter(&mut self) {
         // Offered harnesses plus any that already have threads.
         let mut filters: Vec<Option<&str>> = vec![None];
-        for id in ["claude", "agy", "codex", "opencode", "keel"] {
+        for id in [
+            "claude", "agy", "codex", "opencode", "keel", "cursor", "grok",
+        ] {
             if self.harnesses.iter().any(|h| h.id == id)
                 || self.conversations.iter().any(|c| c.harness == id)
             {
@@ -2285,7 +2291,9 @@ mod tests {
 
     #[test]
     fn every_harness_has_a_glyph() {
-        for harness in ["claude", "agy", "codex", "opencode", "keel"] {
+        for harness in [
+            "claude", "agy", "codex", "opencode", "keel", "cursor", "grok",
+        ] {
             assert_ne!(harness_glyph(harness), "•");
         }
         assert_eq!(harness_glyph("unknown"), "•");

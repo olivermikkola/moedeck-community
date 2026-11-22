@@ -381,62 +381,17 @@ pub fn list_all_conversations(
 
     // 3. Discover Codex sessions (primary + profiles)
     for (profile, home) in profiles::harness_homes("codex") {
-        let codex_idx = home.join(".codex").join("session_index.jsonl");
-        let Ok(content) = fs::read_to_string(&codex_idx) else {
-            continue;
-        };
-        for line in content.lines().rev().take(6) {
-            if let Ok(val) = serde_json::from_str::<Value>(line) {
-                if let Some(raw_id) = val.get("id").and_then(|v| v.as_str()) {
-                    let id = profiles::make_conv_id("codex", profile.as_deref(), raw_id);
-                    let (_, profile_label) = profile_display(profile.as_deref());
-                    let default_title = val
-                        .get("thread_name")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("Codex Session")
-                        .to_string();
-                    let ov = overlays.get(&id);
-                    let title = ov.and_then(|o| o.title.clone()).unwrap_or(default_title);
-                    let harness = ov
-                        .and_then(|o| o.harness.clone())
-                        .unwrap_or_else(|| "codex".to_string());
-                    let (native_model, native_effort, native_workdir) =
-                        codex_context(raw_id, &home);
-                    let raw_model = ov.and_then(|o| o.model.clone()).unwrap_or(native_model);
-                    let (model, model_label) = humanize_model_name(&harness, &raw_model);
-                    let effort = ov.and_then(|o| o.effort.clone()).unwrap_or(native_effort);
-                    let workdir = ov.and_then(|o| o.workdir.clone()).unwrap_or(native_workdir);
-                    let is_running = active_runner_ids.contains_key(&id);
-                    let updated_at = ov.map(|o| o.updated_at).unwrap_or(1789000000000);
-                    list.push(ConversationSummary {
-                        id: id.clone(),
-                        raw_id: raw_id.to_string(),
-                        title,
-                        subtitle: format_subtitle(&workdir),
-                        workdir,
-                        harness,
-                        profile: profile.clone(),
-                        profile_label,
-                        model,
-                        model_label,
-                        effort,
-                        status: if is_running {
-                            "busy".to_string()
-                        } else {
-                            "idle".to_string()
-                        },
-                        running_tasks_count: if is_running { 1 } else { 0 },
-                        running_task_label: active_runner_ids.get(&id).cloned(),
-                        updated_at,
-                        pinned: ov.map(|o| o.pinned).unwrap_or(false),
-                        last_preview: ov
-                            .and_then(|o| o.appended_messages.last())
-                            .map(preview_of)
-                            .unwrap_or_else(|| "Codex thread".to_string()),
-                        pr_links: Vec::new(),
-                        pending_approval: None,
-                    });
-                }
+        let limit = usize::MAX;
+        for thread in codex_threads(&home, None, limit) {
+            let summary = codex_summary(
+                thread,
+                &home,
+                profile.as_deref(),
+                &overlays,
+                active_runner_ids,
+            );
+            if !list.iter().any(|c| c.id == summary.id) {
+                list.push(summary);
             }
         }
     }
@@ -463,7 +418,39 @@ pub fn list_all_conversations(
         }
     }
 
-    // 6. Add pure MoE Deck threads (created directly in MoE Deck). Include fresh,
+    // 6. Discover Cursor Agent chats (meta.json plus agent transcripts).
+    for (profile, home) in profiles::harness_homes("cursor") {
+        let limit = if profile.is_none() { 16 } else { 8 };
+        for summary in discover_cursor_sessions(
+            &overlays,
+            active_runner_ids,
+            profile.as_deref(),
+            &home,
+            limit,
+        ) {
+            if !list.iter().any(|c| c.id == summary.id) {
+                list.push(summary);
+            }
+        }
+    }
+
+    // 7. Discover Grok Build sessions from ~/.grok/sessions (or $GROK_HOME).
+    for (profile, home) in profiles::harness_homes("grok") {
+        let limit = if profile.is_none() { 16 } else { 8 };
+        for summary in crate::grok::discover(
+            &overlays,
+            active_runner_ids,
+            profile.as_deref(),
+            &home,
+            limit,
+        ) {
+            if !list.iter().any(|c| c.id == summary.id) {
+                list.push(summary);
+            }
+        }
+    }
+
+    // 8. Add pure MoE Deck threads (created directly in MoE Deck). Include fresh,
     // message-less threads too — otherwise "+ New" creates a thread that is
     // invisible until the first message is sent.
     for (id, ov) in &overlays {
@@ -505,6 +492,7 @@ pub fn list_all_conversations(
                 last_preview,
                 pr_links: Vec::new(),
                 pending_approval: None,
+                can_stop: false,
             });
         }
     }
@@ -520,7 +508,35 @@ pub fn list_all_conversations(
             .then_with(|| b.updated_at.cmp(&a.updated_at))
     });
 
+    for c in &mut list {
+        apply_run_control(c, active_runner_ids);
+    }
     list
+}
+
+fn apply_run_control(summary: &mut ConversationSummary, active: &HashMap<String, String>) {
+    summary.can_stop = active.contains_key(&summary.id);
+    if (summary.id.starts_with("opencode:")
+        || (!cfg!(target_os = "linux") && summary.id.starts_with("codex:")))
+        && !summary.can_stop
+    {
+        // A shared server and old SQLite flags cannot establish session liveness.
+        summary.status = "unknown".into();
+        summary.running_tasks_count = 0;
+        summary.running_task_label = Some(format!(
+            "Read-only {} history. Continue this chat in {}.",
+            if summary.id.starts_with("opencode:") {
+                "OpenCode"
+            } else {
+                "Codex"
+            },
+            if summary.id.starts_with("opencode:") {
+                "OpenCode"
+            } else {
+                "Codex"
+            }
+        ));
+    }
 }
 
 fn summarize_opencode_single_session(
@@ -597,6 +613,7 @@ fn summarize_opencode_single_session(
             .unwrap_or_else(|| "OpenCode session".to_string()),
         pr_links: Vec::new(),
         pending_approval: None,
+        can_stop: false,
     })
 }
 
@@ -645,6 +662,7 @@ pub fn find_conversation_summary(
                 .unwrap_or_else(|| "Ready for commands".to_string()),
             pr_links: Vec::new(),
             pending_approval: None,
+            can_stop: false,
         });
     }
 
@@ -721,6 +739,23 @@ pub fn find_conversation_summary(
                     );
                 }
             }
+            "cursor" => {
+                return cursor_listings(&home)
+                    .into_iter()
+                    .find(|chat| chat.raw_id == raw_id)
+                    .and_then(|chat| {
+                        cursor_summary(chat, profile_seg.as_deref(), overlays, active_runner_ids)
+                    });
+            }
+            "grok" => {
+                return crate::grok::session_summary_by_id(
+                    &home,
+                    &raw_id,
+                    profile_seg.as_deref(),
+                    overlays,
+                    active_runner_ids,
+                );
+            }
             "opencode" => {
                 let db_path = home
                     .join(".local")
@@ -740,66 +775,14 @@ pub fn find_conversation_summary(
                 }
             }
             "codex" => {
-                let codex_idx = home.join(".codex").join("session_index.jsonl");
-                if let Ok(content) = fs::read_to_string(&codex_idx) {
-                    for line in content.lines().rev() {
-                        if let Ok(val) = serde_json::from_str::<Value>(line) {
-                            if val.get("id").and_then(|v| v.as_str()) == Some(&raw_id) {
-                                let default_title = val
-                                    .get("thread_name")
-                                    .and_then(|v| v.as_str())
-                                    .unwrap_or("Codex Session")
-                                    .to_string();
-                                let (_, profile_label) = profile_display(profile_seg.as_deref());
-                                let ov = overlays.get(id);
-                                let title =
-                                    ov.and_then(|o| o.title.clone()).unwrap_or(default_title);
-                                let harness = ov
-                                    .and_then(|o| o.harness.clone())
-                                    .unwrap_or_else(|| "codex".to_string());
-                                let (native_model, native_effort, native_workdir) =
-                                    codex_context(&raw_id, &home);
-                                let raw_model =
-                                    ov.and_then(|o| o.model.clone()).unwrap_or(native_model);
-                                let (model, model_label) =
-                                    humanize_model_name(&harness, &raw_model);
-                                let effort =
-                                    ov.and_then(|o| o.effort.clone()).unwrap_or(native_effort);
-                                let workdir =
-                                    ov.and_then(|o| o.workdir.clone()).unwrap_or(native_workdir);
-                                let is_running = active_runner_ids.contains_key(id);
-                                let updated_at = ov.map(|o| o.updated_at).unwrap_or(1789000000000);
-                                return Some(ConversationSummary {
-                                    id: id.to_string(),
-                                    raw_id: raw_id.clone(),
-                                    title,
-                                    subtitle: format_subtitle(&workdir),
-                                    workdir,
-                                    harness,
-                                    profile: profile_seg.clone(),
-                                    profile_label,
-                                    model,
-                                    model_label,
-                                    effort,
-                                    status: if is_running {
-                                        "busy".to_string()
-                                    } else {
-                                        "idle".to_string()
-                                    },
-                                    running_tasks_count: if is_running { 1 } else { 0 },
-                                    running_task_label: active_runner_ids.get(id).cloned(),
-                                    updated_at,
-                                    pinned: ov.map(|o| o.pinned).unwrap_or(false),
-                                    last_preview: ov
-                                        .and_then(|o| o.appended_messages.last())
-                                        .map(preview_of)
-                                        .unwrap_or_else(|| "Codex thread".to_string()),
-                                    pr_links: Vec::new(),
-                                    pending_approval: None,
-                                });
-                            }
-                        }
-                    }
+                if let Some(thread) = codex_threads(&home, Some(&raw_id), 1).pop() {
+                    return Some(codex_summary(
+                        thread,
+                        &home,
+                        profile_seg.as_deref(),
+                        overlays,
+                        active_runner_ids,
+                    ));
                 }
             }
             _ => {}
@@ -839,6 +822,7 @@ pub fn find_conversation_summary(
         last_preview: "Ready for commands".to_string(),
         pr_links: Vec::new(),
         pending_approval: None,
+        can_stop: false,
     })
 }
 
@@ -861,6 +845,7 @@ pub fn get_conversation_detail_tail(
     let overlays = load_overlays();
     let overlay = overlays.get(id);
     let mut summary = find_conversation_summary(id, active_runner_ids, &overlays)?;
+    apply_run_control(&mut summary, active_runner_ids);
 
     let mut messages: Vec<ChatMessage> = Vec::new();
     let mut native_omitted = 0;
@@ -911,24 +896,43 @@ pub fn get_conversation_detail_tail(
                     Vec::new()
                 }
             }
+            "cursor" => find_cursor_transcript(&home, &raw_id)
+                .map(|path| parse_cursor_messages(&path))
+                .unwrap_or_default(),
+            "grok" => crate::grok::messages(&home, &raw_id),
             _ => Vec::new(),
         };
     }
 
     let native_opencode = harness_seg.as_deref() == Some("opencode");
-    let is_actively_running = active_runner_ids.contains_key(id);
+    let is_actively_running = active_runner_ids.contains_key(id)
+        || (summary.harness == "codex" && summary.status == "busy");
 
     if let Some(ov) = overlay {
         if native_opencode {
             merge_opencode_overlay(&mut messages, &ov.appended_messages, native_omitted > 0);
         } else {
+            // Match only pre-existing native occurrences. Comparing against
+            // messages appended during this loop erased legitimate repeats.
+            let native_len = messages.len();
+            let mut matched = std::collections::HashSet::new();
             for m in &ov.appended_messages {
-                // Avoid duplicating a message the transcript already ingested.
-                let already_present = messages.iter().any(|existing| {
-                    existing.role == m.role
-                        && normalize_chat_text(&existing.text) == normalize_chat_text(&m.text)
-                });
-                if !already_present || (m.role == "assistant" && m.streaming) {
+                let native_match =
+                    messages[..native_len]
+                        .iter()
+                        .enumerate()
+                        .find(|(index, existing)| {
+                            !matched.contains(index)
+                                && existing.role == m.role
+                                && normalize_chat_text(&existing.text)
+                                    == normalize_chat_text(&m.text)
+                        });
+                if let Some((index, _)) = native_match {
+                    matched.insert(index);
+                    if m.role == "assistant" && m.streaming {
+                        messages.push(m.clone());
+                    }
+                } else {
                     messages.push(m.clone());
                 }
             }
@@ -942,6 +946,23 @@ pub fn get_conversation_detail_tail(
     // Reconcile any orphaned `streaming: true` "Thinking…" placeholders when no runner task is active
     if !is_actively_running {
         for m in &mut messages {
+            let stale_status = if summary.status == "unknown" {
+                "unknown"
+            } else {
+                "interrupted"
+            };
+            for tool in &mut m.tools {
+                if matches!(tool.status.as_str(), "running" | "waiting_approval") {
+                    tool.status = stale_status.into();
+                }
+            }
+            for block in &mut m.blocks {
+                if let crate::models::TurnBlock::Tool { status, .. } = block {
+                    if matches!(status.as_str(), "running" | "waiting_approval") {
+                        *status = stale_status.into();
+                    }
+                }
+            }
             if m.streaming {
                 m.streaming = false;
                 if m.text == "Thinking…" || m.text == "Working…" {
@@ -1086,7 +1107,7 @@ fn opencode_message_count(raw_id: &str, home: &Path) -> usize {
 /// Run a read-only `sqlite3 -json` query. `None` means the query itself failed
 /// (for example, the table does not exist in this OpenCode version); an empty
 /// result set is `Some(vec![])`.
-fn opencode_rows(db_path: &Path, sql: &str) -> Option<Vec<Value>> {
+pub fn opencode_rows(db_path: &Path, sql: &str) -> Option<Vec<Value>> {
     let out = Command::new("sqlite3")
         .arg("-readonly")
         .arg("-json")
@@ -1234,6 +1255,7 @@ fn discover_opencode_sessions(
                 .unwrap_or(title),
             pr_links: Vec::new(),
             pending_approval: None,
+            can_stop: false,
         });
     }
 
@@ -1531,6 +1553,234 @@ pub fn parse_opencode_messages(raw_id: &str, home: &Path) -> Vec<ChatMessage> {
 }
 
 /// Inspect only the bounded tail; old or missing metadata must not invent a model.
+pub(crate) struct CodexThread {
+    pub(crate) raw_id: String,
+    pub(crate) title: String,
+    updated_at: i64,
+    model: String,
+    effort: String,
+    pub(crate) workdir: String,
+    preview: String,
+}
+
+/// The number in the name rises with Codex's schema, so take the highest.
+fn codex_state_db(home: &Path) -> Option<PathBuf> {
+    let mut found: Vec<(u32, PathBuf)> = fs::read_dir(crate::codex::state_dir(home))
+        .ok()?
+        .flatten()
+        .filter_map(|entry| {
+            let name = entry.file_name();
+            let number = name
+                .to_str()?
+                .strip_prefix("state_")?
+                .strip_suffix(".sqlite")?
+                .parse()
+                .ok()?;
+            Some((number, entry.path()))
+        })
+        .collect();
+    found.sort();
+    found.pop().map(|(_, path)| path)
+}
+
+/// Newest chats first, from Codex's own thread table. `session_index.jsonl` only
+/// holds chats Codex has named, so it is the fallback for older installs. Headless
+/// runs and subagents aren't chats, and Deck's own runs are listed under their
+/// `helm:` thread. Any of them can still be opened by id.
+pub(crate) fn codex_threads(home: &Path, id: Option<&str>, limit: usize) -> Vec<CodexThread> {
+    if id.is_some_and(|id| !is_safe_session_id(id)) {
+        return Vec::new();
+    }
+    let rows = codex_state_db(home).and_then(|db| {
+        // Codex schema revisions add columns. Missing optional metadata must
+        // not hide every chat by causing the entire query to fail.
+        let columns = opencode_rows(&db, "PRAGMA table_info(threads);")?;
+        let has = |key: &str| columns.iter().any(|c| c["name"].as_str() == Some(key));
+        let col = |key: &str, fallback: &str| {
+            if has(key) {
+                key.to_string()
+            } else {
+                fallback.to_string()
+            }
+        };
+        let filter = match id {
+            Some(id) => format!("id = '{id}'"),
+            None => {
+                let mut clauses = vec!["1 = 1".to_string()];
+                if has("archived") {
+                    clauses.push("archived = 0".into());
+                }
+                if has("first_user_message") {
+                    clauses.push("first_user_message != ''".into());
+                }
+                if has("source") {
+                    clauses.push("source != 'exec' AND source NOT LIKE '{%'".into());
+                }
+                if has("originator") {
+                    clauses.push("COALESCE(originator, '') NOT IN ('moedeck', 'helm')".into());
+                }
+                clauses.join(" AND ")
+            }
+        };
+        let mut selection = [
+            "id",
+            "name",
+            "title",
+            "first_user_message",
+            "preview",
+            "model",
+            "reasoning_effort",
+            "cwd",
+        ]
+        .iter()
+        .map(|key| format!("{} AS {key}", col(key, "''")))
+        .collect::<Vec<_>>();
+        selection.push(format!(
+            "COALESCE({}, {} * 1000, 0) AS updated_ms",
+            col("updated_at_ms", "NULL"),
+            col("updated_at", "NULL")
+        ));
+        let limit = if limit == usize::MAX {
+            String::new()
+        } else {
+            format!(" LIMIT {limit}")
+        };
+        opencode_rows(
+            &db,
+            &format!(
+                "SELECT {} FROM threads WHERE {filter} ORDER BY updated_ms DESC{limit};",
+                selection.join(", ")
+            ),
+        )
+    });
+    let Some(rows) = rows else {
+        return codex_index_threads(home, id, limit);
+    };
+    let text = |row: &Value, key: &str| row[key].as_str().unwrap_or("").trim().to_string();
+    rows.iter()
+        .map(|row| {
+            let title = ["name", "title", "first_user_message"]
+                .iter()
+                .map(|key| text(row, key))
+                .find(|value| !value.is_empty())
+                .map(|value| clean_title_from_prompt(&value))
+                .unwrap_or_else(|| "Codex Session".to_string());
+            CodexThread {
+                raw_id: text(row, "id"),
+                title,
+                updated_at: row["updated_ms"].as_i64().unwrap_or(0),
+                model: text(row, "model"),
+                effort: text(row, "reasoning_effort"),
+                workdir: text(row, "cwd"),
+                preview: text(row, "preview"),
+            }
+        })
+        .collect()
+}
+
+fn codex_index_threads(home: &Path, id: Option<&str>, limit: usize) -> Vec<CodexThread> {
+    let Ok(content) = fs::read_to_string(crate::codex::state_dir(home).join("session_index.jsonl"))
+    else {
+        return Vec::new();
+    };
+    let mut seen = Vec::new();
+    let mut threads = Vec::new();
+    for value in content
+        .lines()
+        .rev()
+        .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+    {
+        let Some(raw_id) = value["id"].as_str() else {
+            continue;
+        };
+        if seen.iter().any(|s| s == raw_id) || id.is_some_and(|id| id != raw_id) {
+            continue;
+        }
+        seen.push(raw_id.to_string());
+        let Some(rollout) = find_codex_rollout(raw_id, home) else {
+            continue;
+        };
+        let updated_at = fs::metadata(rollout)
+            .ok()
+            .and_then(|m| m.modified().ok())
+            .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+            .map(|d| d.as_millis() as i64)
+            .unwrap_or(0);
+        threads.push(CodexThread {
+            raw_id: raw_id.to_string(),
+            title: value["thread_name"]
+                .as_str()
+                .unwrap_or("Codex Session")
+                .to_string(),
+            updated_at,
+            model: String::new(),
+            effort: String::new(),
+            workdir: String::new(),
+            preview: String::new(),
+        });
+    }
+    threads.sort_by_key(|t| std::cmp::Reverse(t.updated_at));
+    threads.truncate(limit);
+    threads
+}
+
+fn codex_summary(
+    thread: CodexThread,
+    home: &Path,
+    profile: Option<&str>,
+    overlays: &HashMap<String, StoredThreadOverlay>,
+    active_runner_ids: &HashMap<String, String>,
+) -> ConversationSummary {
+    let id = profiles::make_conv_id("codex", profile, &thread.raw_id);
+    let (_, profile_label) = profile_display(profile);
+    let ov = overlays.get(&id);
+    let harness = ov
+        .and_then(|o| o.harness.clone())
+        .unwrap_or_else(|| "codex".to_string());
+    let (native_model, native_effort, native_workdir) =
+        if thread.model.is_empty() || thread.workdir.is_empty() {
+            codex_context(&thread.raw_id, home)
+        } else {
+            (thread.model, thread.effort, thread.workdir)
+        };
+    let raw_model = ov.and_then(|o| o.model.clone()).unwrap_or(native_model);
+    let (model, model_label) = humanize_model_name(&harness, &raw_model);
+    let effort = ov.and_then(|o| o.effort.clone()).unwrap_or(native_effort);
+    let workdir = ov.and_then(|o| o.workdir.clone()).unwrap_or(native_workdir);
+    let owned = active_runner_ids.contains_key(&id);
+    let native_running =
+        !owned && crate::native_status::codex_session_running(&thread.raw_id, home);
+    let is_running = owned || native_running;
+    ConversationSummary {
+        id: id.clone(),
+        raw_id: thread.raw_id,
+        title: ov.and_then(|o| o.title.clone()).unwrap_or(thread.title),
+        subtitle: format_subtitle(&workdir),
+        workdir,
+        harness,
+        profile: profile.map(str::to_string),
+        profile_label,
+        model,
+        model_label,
+        effort,
+        status: if is_running { "busy" } else { "idle" }.to_string(),
+        running_tasks_count: if is_running { 1 } else { 0 },
+        running_task_label: active_runner_ids.get(&id).cloned().or_else(|| {
+            native_running.then(|| "Running in Codex. Control this turn in Codex.".into())
+        }),
+        updated_at: ov.map_or(thread.updated_at, |o| o.updated_at.max(thread.updated_at)),
+        pinned: ov.map(|o| o.pinned).unwrap_or(false),
+        last_preview: ov
+            .and_then(|o| o.appended_messages.last())
+            .map(preview_of)
+            .or_else(|| (!thread.preview.is_empty()).then_some(thread.preview))
+            .unwrap_or_else(|| "Codex thread".to_string()),
+        pr_links: Vec::new(),
+        pending_approval: None,
+        can_stop: false,
+    }
+}
+
 fn codex_context(raw_id: &str, home: &Path) -> (String, String, String) {
     let fallback = (
         "default".into(),
@@ -1577,11 +1827,11 @@ fn codex_context_from_tail(
     fallback
 }
 
-fn find_codex_rollout(raw_id: &str, home: &Path) -> Option<PathBuf> {
+pub(crate) fn find_codex_rollout(raw_id: &str, home: &Path) -> Option<PathBuf> {
     if !is_safe_session_id(raw_id) {
         return None;
     }
-    let sessions_root = home.join(".codex").join("sessions");
+    let sessions_root = crate::codex::state_dir(home).join("sessions");
     let suffix = format!("{}.jsonl", raw_id);
     find_file_with_suffix(&sessions_root, &suffix, 4)
 }
@@ -1604,167 +1854,197 @@ fn find_file_with_suffix(dir: &Path, suffix: &str, depth: usize) -> Option<PathB
     None
 }
 
+/// Codex records both transport messages and completed UI items. Prefer the
+/// UI's user messages per turn (transport also includes injected instructions),
+/// and identify assistant messages by ID, never by repeated wording.
 pub fn parse_codex_messages(path: &Path) -> Vec<ChatMessage> {
-    let file = match File::open(path) {
-        Ok(f) => f,
-        Err(_) => return Vec::new(),
+    use crate::models::TurnBlock;
+    use std::collections::HashSet;
+    let Ok(file) = File::open(path) else {
+        return Vec::new();
     };
-    let reader = BufReader::new(file);
     let mut messages: Vec<ChatMessage> = Vec::new();
-    let mut pending_tools: Vec<ToolSummaryItem> = Vec::new();
-
+    let mut response_users = Vec::new();
+    let mut canonical_user_turns = HashSet::new();
+    let mut seen_assistant_ids = HashSet::new();
     let mut current_model: Option<String> = None;
-    for line in reader.lines().map_while(Result::ok) {
-        if line.len() > 32768
-            && !line.contains("\"item_completed\"")
-            && !line.contains("\"turn_context\"")
-            && !line.contains("\"response_item\"")
-        {
-            continue;
-        }
+    let mut turn = 0usize;
+    let mut turn_open = false;
+    let mut assistant: Option<usize> = None;
+    for line in BufReader::new(file).lines().map_while(Result::ok) {
         let Ok(val) = serde_json::from_str::<Value>(&line) else {
             continue;
         };
-        if val["type"].as_str() == Some("turn_context") {
-            current_model = val["payload"]["model"].as_str().map(str::to_string);
-        }
-        let ts = val
-            .get("timestamp")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string();
-        if val["type"].as_str() == Some("response_item")
-            && val["payload"]["type"].as_str() == Some("message")
-        {
-            let payload = &val["payload"];
-            let role = payload["role"].as_str().unwrap_or("");
-            if matches!(role, "user" | "assistant") {
-                let text = payload["content"]
-                    .as_array()
-                    .map(|items| {
-                        items
-                            .iter()
-                            .filter_map(|item| item["text"].as_str())
-                            .collect::<Vec<_>>()
-                            .join("\n\n")
-                    })
-                    .unwrap_or_default();
-                if !text.is_empty() {
-                    messages.push(ChatMessage {
-                        id: payload["id"]
-                            .as_str()
-                            .map(str::to_string)
-                            .unwrap_or_else(|| format!("codex-{}", messages.len())),
-                        role: role.into(),
-                        harness: "codex".into(),
-                        model: if role == "assistant" {
-                            current_model.clone()
-                        } else {
-                            None
-                        },
-                        timestamp: ts.clone(),
-                        text,
-                        thinking: None,
-                        tools: std::mem::take(&mut pending_tools),
-                        images: vec![],
-                        streaming: false,
-                        blocks: Vec::new(),
-                    });
-                }
-            }
+        let payload = &val["payload"];
+        let kind = payload["type"].as_str().unwrap_or("");
+        let record = val["type"].as_str().unwrap_or("");
+        let ts = val["timestamp"].as_str().unwrap_or("").to_string();
+        if record == "turn_context" {
+            current_model = payload["model"].as_str().map(str::to_string);
             continue;
         }
-        if val.get("type").and_then(|v| v.as_str()) == Some("event_msg") {
-            let Some(payload) = val.get("payload") else {
-                continue;
-            };
-            if payload.get("type").and_then(|v| v.as_str()) != Some("item_completed") {
+        if record == "event_msg" && kind == "task_started" {
+            turn += 1;
+            turn_open = true;
+            assistant = None;
+            continue;
+        }
+        if record == "event_msg"
+            && matches!(kind, "task_complete" | "turn_aborted" | "task_cancelled")
+        {
+            turn_open = false;
+        }
+        let (item, is_ui) = if record == "event_msg" && kind == "item_completed" {
+            (&payload["item"], true)
+        } else if record == "response_item" && kind == "message" {
+            (payload, false)
+        } else {
+            continue;
+        };
+        let itype = item["type"].as_str().unwrap_or("");
+        let role = if is_ui {
+            match itype {
+                "UserMessage" => "user",
+                "AgentMessage" => "assistant",
+                _ => "",
+            }
+        } else {
+            item["role"].as_str().unwrap_or("")
+        };
+        if matches!(role, "user" | "assistant") {
+            let text = item["content"]
+                .as_array()
+                .map(|parts| {
+                    parts
+                        .iter()
+                        .filter_map(|p| p["text"].as_str())
+                        .filter(|s| !s.trim().is_empty())
+                        .collect::<Vec<_>>()
+                        .join("\n\n")
+                })
+                .unwrap_or_default();
+            let images: Vec<String> = item["content"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter(|part| part["type"] == "local_image")
+                .filter_map(|part| part["path"].as_str())
+                .filter(|path| is_image_path(path) && Path::new(path).is_file())
+                .map(|path| format!("/api/local-image?path={}", url_encode(path)))
+                .collect();
+            if text.is_empty() && images.is_empty() {
                 continue;
             }
-            let Some(item) = payload.get("item") else {
-                continue;
-            };
-            let itype = item.get("type").and_then(|v| v.as_str()).unwrap_or("");
-            if itype == "UserMessage" {
-                let mut parts = Vec::new();
-                if let Some(arr) = item.get("content").and_then(|v| v.as_array()) {
-                    for c in arr {
-                        if let Some(t) = c.get("text").and_then(|v| v.as_str()) {
-                            if !t.trim().is_empty() {
-                                parts.push(t.trim().to_string());
-                            }
-                        }
-                    }
+            let id = item["id"].as_str().unwrap_or("").to_string();
+            if role == "user" {
+                if is_ui {
+                    canonical_user_turns.insert(turn);
+                } else {
+                    response_users.push((messages.len(), turn));
                 }
-                if !parts.is_empty() {
-                    messages.push(ChatMessage {
-                        id: item
-                            .get("id")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("codex-u")
-                            .to_string(),
-                        role: "user".to_string(),
-                        harness: "codex".to_string(),
-                        model: None,
-                        timestamp: ts,
-                        text: parts.join("\n\n"),
-                        thinking: None,
-                        tools: Vec::new(),
-                        images: Vec::new(),
-                        streaming: false,
-                        blocks: Vec::new(),
-                    });
-                }
-            } else if itype == "CommandExecution" {
-                let summary = item
-                    .get("command")
-                    .and_then(|c| {
-                        c.as_array().and_then(|arr| {
-                            arr.last().and_then(|v| v.as_str()).map(|s| s.to_string())
-                        })
-                    })
-                    .map(|s| truncate_str(s.lines().next().unwrap_or(&s), 68))
-                    .unwrap_or_else(|| "exec".to_string());
-                pending_tools.push(ToolSummaryItem {
-                    name: "Bash".to_string(),
-                    summary,
-                    status: "done".to_string(),
+                messages.push(ChatMessage {
+                    id,
+                    role: role.into(),
+                    harness: "codex".into(),
+                    model: None,
+                    timestamp: ts,
+                    text,
+                    thinking: None,
+                    tools: vec![],
+                    images,
+                    streaming: false,
+                    blocks: vec![],
                 });
-            } else if itype == "AgentMessage" {
-                let mut parts = Vec::new();
-                if let Some(arr) = item.get("content").and_then(|v| v.as_array()) {
-                    for c in arr {
-                        if let Some(t) = c.get("text").and_then(|v| v.as_str()) {
-                            if !t.trim().is_empty() {
-                                parts.push(t.trim().to_string());
-                            }
-                        }
-                    }
+                // The two copies of a user message must not split the answer.
+                assistant = None;
+            } else {
+                if !id.is_empty() && !seen_assistant_ids.insert(id) {
+                    continue;
                 }
-                if !parts.is_empty() {
-                    messages.push(ChatMessage {
-                        id: item
-                            .get("id")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("codex-a")
-                            .to_string(),
-                        role: "assistant".to_string(),
-                        harness: "codex".to_string(),
-                        model: current_model.clone(),
-                        timestamp: ts,
-                        text: parts.join("\n\n"),
-                        thinking: None,
-                        tools: std::mem::take(&mut pending_tools),
-                        images: Vec::new(),
-                        streaming: false,
-                        blocks: Vec::new(),
-                    });
-                }
+                let idx =
+                    codex_assistant_turn(&mut messages, &mut assistant, &current_model, &ts, turn);
+                messages[idx].blocks.push(TurnBlock::Text { text });
             }
+        } else if is_ui && itype == "CommandExecution" {
+            let command = item["command"]
+                .as_str()
+                .map(str::to_string)
+                .or_else(|| {
+                    item["command"]
+                        .as_array()
+                        .and_then(|a| a.last())
+                        .and_then(Value::as_str)
+                        .map(str::to_string)
+                })
+                .unwrap_or_else(|| "Command".into());
+            let failed = item["exit_code"].as_i64().is_some_and(|code| code != 0)
+                || matches!(item["status"].as_str(), Some("failed" | "declined"));
+            let idx =
+                codex_assistant_turn(&mut messages, &mut assistant, &current_model, &ts, turn);
+            messages[idx].blocks.push(TurnBlock::Tool {
+                id: item["id"].as_str().map(str::to_string),
+                name: "Bash".into(),
+                summary: truncate_str(command.lines().next().unwrap_or(&command), 72),
+                input: Some(truncate_str(&command, crate::timeline::TOOL_IO_CAP)),
+                output: item["aggregated_output"]
+                    .as_str()
+                    .map(|o| truncate_str(o, crate::timeline::TOOL_IO_CAP)),
+                status: if failed { "error" } else { "done" }.into(),
+            });
         }
     }
-
+    if turn_open && crate::native_status::codex_is_running(path) {
+        let idx = codex_assistant_turn(&mut messages, &mut assistant, &current_model, "", turn);
+        messages[idx].streaming = true;
+    } else if turn_open
+        && cfg!(target_os = "linux")
+        && !crate::native_status::codex_has_writer(path)
+    {
+        let idx = codex_assistant_turn(&mut messages, &mut assistant, &current_model, "", turn);
+        messages[idx].blocks.push(TurnBlock::Text { text: "This turn ended without a completion record. Continue in Codex or send a new message to resume.".into() });
+    }
+    let suppressed: HashSet<usize> = response_users
+        .into_iter()
+        .filter_map(|(idx, turn)| canonical_user_turns.contains(&turn).then_some(idx))
+        .collect();
+    let mut index = 0;
+    messages.retain(|_| {
+        let keep = !suppressed.contains(&index);
+        index += 1;
+        keep
+    });
+    for m in &mut messages {
+        crate::timeline::sync_legacy(m);
+    }
     messages
+}
+
+fn codex_assistant_turn(
+    messages: &mut Vec<ChatMessage>,
+    current: &mut Option<usize>,
+    model: &Option<String>,
+    ts: &str,
+    turn: usize,
+) -> usize {
+    if let Some(idx) = *current {
+        return idx;
+    }
+    let idx = messages.len();
+    messages.push(ChatMessage {
+        id: format!("codex-turn-{turn}-{idx}"),
+        role: "assistant".into(),
+        harness: "codex".into(),
+        model: model.clone(),
+        timestamp: ts.into(),
+        text: String::new(),
+        thinking: None,
+        tools: vec![],
+        images: vec![],
+        streaming: false,
+        blocks: vec![],
+    });
+    *current = Some(idx);
+    idx
 }
 
 fn discover_keel_sessions(
@@ -1910,6 +2190,7 @@ fn summarize_keel_session(
         last_preview,
         pr_links: Vec::new(),
         pending_approval: None,
+        can_stop: false,
     })
 }
 
@@ -2011,7 +2292,367 @@ pub fn parse_keel_messages(path: &Path) -> Vec<ChatMessage> {
     messages
 }
 
-fn find_claude_jsonl(raw_id: &str, home: &Path) -> Option<PathBuf> {
+/// Cursor state directory. The default account follows `CURSOR_CONFIG_DIR`
+/// when that variable is an absolute path; every other account uses `~/.cursor`
+/// inside its own home (profiles set the variable to that directory).
+pub fn cursor_state_dir(home: &Path) -> PathBuf {
+    if home == home_dir() {
+        if let Ok(configured) = std::env::var("CURSOR_CONFIG_DIR") {
+            let configured = PathBuf::from(configured.trim());
+            if configured.is_absolute() {
+                return configured;
+            }
+        }
+    }
+    home.join(".cursor")
+}
+
+pub(crate) struct CursorListing {
+    pub raw_id: String,
+    pub title: String,
+    pub workdir: String,
+    pub updated_at: i64,
+    pub transcript: Option<PathBuf>,
+    pub preview: Option<String>,
+}
+
+pub(crate) fn cursor_listings(home: &Path) -> Vec<CursorListing> {
+    let root = cursor_state_dir(home);
+    let mut by_id: HashMap<String, CursorListing> = HashMap::new();
+    if let Ok(hashes) = fs::read_dir(root.join("chats")) {
+        for hash in hashes.flatten() {
+            if !hash.path().is_dir() {
+                continue;
+            }
+            let Ok(chats) = fs::read_dir(hash.path()) else {
+                continue;
+            };
+            for chat in chats.flatten() {
+                let raw_id = chat.file_name().to_string_lossy().to_string();
+                if !is_safe_session_id(&raw_id) {
+                    continue;
+                }
+                let Ok(text) = fs::read_to_string(chat.path().join("meta.json")) else {
+                    continue;
+                };
+                let Ok(meta) = serde_json::from_str::<Value>(&text) else {
+                    continue;
+                };
+                if meta
+                    .get("schemaVersion")
+                    .and_then(|v| v.as_u64())
+                    .is_some_and(|v| v != 1)
+                {
+                    continue;
+                }
+                if meta.get("isSubagent").and_then(|v| v.as_bool()) == Some(true) {
+                    continue;
+                }
+                if meta.get("hasConversation").and_then(|v| v.as_bool()) == Some(false) {
+                    continue;
+                }
+                by_id.insert(
+                    raw_id.clone(),
+                    CursorListing {
+                        raw_id,
+                        title: meta
+                            .get("title")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .trim()
+                            .to_string(),
+                        workdir: meta
+                            .get("cwd")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .trim()
+                            .to_string(),
+                        updated_at: meta
+                            .get("updatedAtMs")
+                            .and_then(|v| v.as_i64())
+                            .unwrap_or(0),
+                        transcript: None,
+                        preview: None,
+                    },
+                );
+            }
+        }
+    }
+
+    if let Ok(projects) = fs::read_dir(root.join("projects")) {
+        for project in projects.flatten() {
+            let transcripts = project.path().join("agent-transcripts");
+            let Ok(sessions) = fs::read_dir(&transcripts) else {
+                continue;
+            };
+            for session in sessions.flatten() {
+                if !session.path().is_dir() {
+                    continue;
+                }
+                let raw_id = session.file_name().to_string_lossy().to_string();
+                if !is_safe_session_id(&raw_id) {
+                    continue;
+                }
+                let path = session.path().join(format!("{raw_id}.jsonl"));
+                if !path.is_file() {
+                    continue;
+                }
+                let mtime = file_mtime_ms(&path);
+                let (first_prompt, preview) = cursor_transcript_texts(&path);
+                let entry = by_id
+                    .entry(raw_id.clone())
+                    .or_insert_with(|| CursorListing {
+                        raw_id,
+                        title: String::new(),
+                        workdir: String::new(),
+                        updated_at: 0,
+                        transcript: None,
+                        preview: None,
+                    });
+                entry.transcript = Some(path);
+                if entry.title.is_empty() {
+                    if let Some(prompt) = first_prompt.as_deref() {
+                        entry.title = clean_title_from_prompt(prompt);
+                    }
+                }
+                if entry.updated_at < mtime {
+                    entry.updated_at = mtime;
+                }
+                entry.preview = preview.or(entry.preview.take());
+            }
+        }
+    }
+
+    let mut listings: Vec<CursorListing> = by_id.into_values().collect();
+    listings.sort_by_key(|chat| std::cmp::Reverse(chat.updated_at));
+    listings
+}
+
+pub fn find_cursor_transcript(home: &Path, raw_id: &str) -> Option<PathBuf> {
+    if !is_safe_session_id(raw_id) {
+        return None;
+    }
+    cursor_listings(home)
+        .into_iter()
+        .find(|chat| chat.raw_id == raw_id)
+        .and_then(|chat| chat.transcript)
+}
+
+fn discover_cursor_sessions(
+    overlays: &HashMap<String, StoredThreadOverlay>,
+    active_runner_ids: &HashMap<String, String>,
+    profile: Option<&str>,
+    home: &Path,
+    limit: usize,
+) -> Vec<ConversationSummary> {
+    cursor_listings(home)
+        .into_iter()
+        .filter_map(|chat| cursor_summary(chat, profile, overlays, active_runner_ids))
+        .take(limit)
+        .collect()
+}
+
+fn cursor_summary(
+    chat: CursorListing,
+    profile: Option<&str>,
+    overlays: &HashMap<String, StoredThreadOverlay>,
+    active_runner_ids: &HashMap<String, String>,
+) -> Option<ConversationSummary> {
+    let id = profiles::make_conv_id("cursor", profile, &chat.raw_id);
+    let (_, profile_label) = profile_display(profile);
+    let ov = overlays.get(&id);
+    let workdir = ov
+        .and_then(|o| o.workdir.clone())
+        .filter(|dir| !dir.is_empty())
+        .or_else(|| {
+            let dir = chat.workdir.trim();
+            (!dir.is_empty()).then(|| dir.to_string())
+        })
+        .unwrap_or_else(home_str);
+    let title = ov
+        .and_then(|o| o.title.clone())
+        .filter(|title| !title.trim().is_empty())
+        .or_else(|| {
+            let title = chat.title.trim();
+            (!title.is_empty()).then(|| title.to_string())
+        })
+        .unwrap_or_else(|| "Cursor session".to_string());
+    let harness = ov
+        .and_then(|o| o.harness.clone())
+        .unwrap_or_else(|| "cursor".to_string());
+    let raw_model = ov
+        .and_then(|o| o.model.clone())
+        .unwrap_or_else(|| "default".to_string());
+    let (model, model_label) = humanize_model_name(&harness, &raw_model);
+    let effort = ov
+        .and_then(|o| o.effort.clone())
+        .unwrap_or_else(|| "default".to_string());
+    let is_running = active_runner_ids.contains_key(&id);
+    let updated_at = ov
+        .map(|o| o.updated_at)
+        .filter(|ts| *ts > 0)
+        .unwrap_or(chat.updated_at);
+    let last_preview = ov
+        .and_then(|o| o.appended_messages.last())
+        .map(preview_of)
+        .or(chat.preview)
+        .unwrap_or_else(|| "Cursor session".to_string());
+    let running_task_label = active_runner_ids.get(&id).cloned();
+    Some(ConversationSummary {
+        id,
+        raw_id: chat.raw_id,
+        title,
+        subtitle: format_subtitle(&workdir),
+        workdir,
+        harness,
+        profile: profile.map(|s| s.to_string()),
+        profile_label,
+        model,
+        model_label,
+        effort,
+        status: if is_running {
+            "busy".to_string()
+        } else {
+            "idle".to_string()
+        },
+        running_tasks_count: if is_running { 1 } else { 0 },
+        running_task_label,
+        updated_at,
+        pinned: ov.map(|o| o.pinned).unwrap_or(false),
+        last_preview,
+        pr_links: Vec::new(),
+        pending_approval: None,
+        can_stop: false,
+    })
+}
+
+fn file_mtime_ms(path: &Path) -> i64 {
+    fs::metadata(path)
+        .ok()
+        .and_then(|meta| meta.modified().ok())
+        .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+        .map(|duration| duration.as_millis() as i64)
+        .unwrap_or(0)
+}
+
+fn cursor_transcript_texts(path: &Path) -> (Option<String>, Option<String>) {
+    let Ok(file) = File::open(path) else {
+        return (None, None);
+    };
+    let mut first = None;
+    let mut last = None;
+    for line in BufReader::new(file).lines().map_while(Result::ok) {
+        let Ok(value) = serde_json::from_str::<Value>(&line) else {
+            continue;
+        };
+        let role = value.get("role").and_then(|v| v.as_str()).unwrap_or("");
+        let mut text = cursor_message_text(&value["message"]["content"]);
+        if role == "user" {
+            text = extract_user_query(&text);
+        }
+        if text.trim().is_empty() {
+            continue;
+        }
+        if role == "user" && first.is_none() {
+            first = Some(text.clone());
+        }
+        last = Some(truncate_str(text.trim(), 90));
+    }
+    (first, last)
+}
+
+fn extract_user_query(text: &str) -> String {
+    const START: &str = "<user_query>";
+    const END: &str = "</user_query>";
+    if let Some(start) = text.find(START) {
+        let rest = &text[start + START.len()..];
+        if let Some(end) = rest.find(END) {
+            return rest[..end].trim().to_string();
+        }
+    }
+    text.trim().to_string()
+}
+
+fn cursor_message_text(content: &Value) -> String {
+    let Some(parts) = content.as_array() else {
+        return content.as_str().unwrap_or("").trim().to_string();
+    };
+    let mut out = Vec::new();
+    for part in parts {
+        if part.get("type").and_then(|v| v.as_str()) == Some("text") {
+            if let Some(text) = part.get("text").and_then(|v| v.as_str()) {
+                if !text.trim().is_empty() {
+                    out.push(text.trim().to_string());
+                }
+            }
+        }
+    }
+    out.join("\n\n")
+}
+
+pub fn parse_cursor_messages(path: &Path) -> Vec<ChatMessage> {
+    let Ok(file) = File::open(path) else {
+        return Vec::new();
+    };
+    let timestamp = chrono::DateTime::from_timestamp_millis(file_mtime_ms(path))
+        .map(|time| time.to_rfc3339())
+        .unwrap_or_else(|| Utc::now().to_rfc3339());
+    let mut messages = Vec::new();
+    for line in BufReader::new(file).lines().map_while(Result::ok) {
+        let Ok(value) = serde_json::from_str::<Value>(&line) else {
+            continue;
+        };
+        let role = value.get("role").and_then(|v| v.as_str()).unwrap_or("");
+        if role != "user" && role != "assistant" {
+            continue;
+        }
+        let content = &value["message"]["content"];
+        if role == "user" {
+            let text = extract_user_query(&cursor_message_text(content));
+            if text.is_empty() {
+                continue;
+            }
+            messages.push(ChatMessage {
+                id: format!("cu-u-{}", messages.len()),
+                role: "user".to_string(),
+                harness: "cursor".to_string(),
+                model: None,
+                timestamp: timestamp.clone(),
+                text,
+                thinking: None,
+                tools: Vec::new(),
+                images: Vec::new(),
+                streaming: false,
+                blocks: Vec::new(),
+            });
+            continue;
+        }
+        let mut message = ChatMessage {
+            id: format!("cu-a-{}", messages.len()),
+            role: "assistant".to_string(),
+            harness: "cursor".to_string(),
+            model: None,
+            timestamp: timestamp.clone(),
+            text: String::new(),
+            thinking: None,
+            tools: Vec::new(),
+            images: Vec::new(),
+            streaming: false,
+            blocks: Vec::new(),
+        };
+        if let Some(parts) = content.as_array() {
+            crate::timeline::push_claude_assistant(&mut message.blocks, parts, "done");
+            crate::timeline::sync_legacy(&mut message);
+        }
+        if message.text.trim().is_empty() && message.tools.is_empty() {
+            continue;
+        }
+        messages.push(message);
+    }
+    messages
+}
+
+pub fn find_claude_jsonl(raw_id: &str, home: &Path) -> Option<PathBuf> {
     if !is_safe_session_id(raw_id) {
         return None;
     }
@@ -2224,6 +2865,7 @@ fn summarize_claude_jsonl(
         },
         pr_links,
         pending_approval: None,
+        can_stop: false,
     })
 }
 
@@ -2412,6 +3054,7 @@ fn summarize_agy_transcript(
         last_preview,
         pr_links: Vec::new(),
         pending_approval: None,
+        can_stop: false,
     })
 }
 
@@ -2948,9 +3591,36 @@ pub fn list_projects() -> Vec<WorkspaceInfo> {
                         .unwrap_or(false)
             })
             .collect();
-        dirs.sort();
+        // Most recently worked-in first: git rewrites files inside `.git` on
+        // most operations, so its mtime tracks activity better than the
+        // folder's own. Alphabetical order cut recent projects past the cap.
+        dirs.sort_by_cached_key(|d| std::cmp::Reverse(last_activity(d)));
         for d in dirs.into_iter().take(24) {
             out.push(inspect_workspace(&d.to_string_lossy()));
+        }
+    }
+    out
+}
+
+fn last_activity(dir: &Path) -> std::time::SystemTime {
+    [dir.to_path_buf(), dir.join(".git")]
+        .iter()
+        .filter_map(|p| fs::metadata(p).and_then(|m| m.modified()).ok())
+        .max()
+        .unwrap_or(UNIX_EPOCH)
+}
+
+/// The given folders that still exist (and are allowed), in order, without
+/// duplicates. Old conversations keep pointing at folders that were renamed
+/// or deleted; offering those for a new chat only fails later.
+pub fn existing_workdirs<'a>(paths: impl IntoIterator<Item = &'a str>) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for p in paths {
+        if let Some(canon) = sanitize_workdir(p) {
+            let s = canon.to_string_lossy().to_string();
+            if !out.contains(&s) {
+                out.push(s);
+            }
         }
     }
     out
@@ -3190,6 +3860,21 @@ fn collect_files_shallow(
 mod tests {
     use super::*;
 
+    #[test]
+    fn existing_workdirs_drops_missing_folders_and_duplicates() {
+        let dir = std::env::temp_dir().join(format!("moedeck-wd-{}", Uuid::new_v4()));
+        fs::create_dir_all(&dir).unwrap();
+        let real = dir.to_string_lossy().to_string();
+        let gone = dir.join("renamed-away").to_string_lossy().to_string();
+        let got = existing_workdirs([real.as_str(), gone.as_str(), real.as_str()]);
+        fs::remove_dir_all(&dir).unwrap();
+        let canon = got.first().cloned();
+        assert_eq!(got.len(), 1, "{got:?}");
+        assert!(canon
+            .unwrap()
+            .ends_with(dir.file_name().unwrap().to_str().unwrap()));
+    }
+
     #[cfg(unix)]
     #[test]
     fn config_dir_is_made_owner_only() {
@@ -3414,6 +4099,75 @@ mod tests {
     }
 
     #[test]
+    fn test_cursor_sessions_skip_empty_chats_and_read_the_transcript() {
+        let dir = std::env::temp_dir().join(format!("moedeck-cursor-test-{}", Uuid::new_v4()));
+        let root = dir.join(".cursor");
+        let id = "c6b62c6f-7ead-4fd6-9922-e952131177ff";
+        let chat = root.join("chats").join("workspace").join(id);
+        fs::create_dir_all(&chat).unwrap();
+        fs::write(
+            chat.join("meta.json"),
+            r#"{"schemaVersion":1,"title":"Fix the parser","updatedAtMs":1700000000000,"cwd":"/tmp/proj","hasConversation":true}"#,
+        )
+        .unwrap();
+        let empty = root.join("chats").join("workspace").join("empty-chat");
+        fs::create_dir_all(&empty).unwrap();
+        fs::write(
+            empty.join("meta.json"),
+            r#"{"schemaVersion":1,"title":"Empty","hasConversation":false}"#,
+        )
+        .unwrap();
+        let future = root.join("chats").join("workspace").join("future-chat");
+        fs::create_dir_all(&future).unwrap();
+        fs::write(
+            future.join("meta.json"),
+            r#"{"schemaVersion":99,"title":"Future schema","hasConversation":true,"cwd":"/tmp/proj"}"#,
+        )
+        .unwrap();
+        let transcript_dir = root
+            .join("projects")
+            .join("proj")
+            .join("agent-transcripts")
+            .join(id);
+        fs::create_dir_all(&transcript_dir).unwrap();
+        let transcript = transcript_dir.join(format!("{id}.jsonl"));
+        fs::write(
+            &transcript,
+            "{\"role\":\"user\",\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"<user_query>\\nAdd cursor\\n</user_query>\"}]}}\n{\"role\":\"assistant\",\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"Done\"},{\"type\":\"tool_use\",\"name\":\"Read\",\"input\":{\"path\":\"README.md\"}}]}}\n{\"type\":\"turn_ended\",\"status\":\"success\"}\n",
+        )
+        .unwrap();
+        let only_id = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+        let only_dir = root
+            .join("projects")
+            .join("proj")
+            .join("agent-transcripts")
+            .join(only_id);
+        fs::create_dir_all(&only_dir).unwrap();
+        fs::write(
+            only_dir.join(format!("{only_id}.jsonl")),
+            "{\"role\":\"user\",\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"Transcript only\"}]}}\n",
+        )
+        .unwrap();
+
+        let messages = parse_cursor_messages(&transcript);
+        assert_eq!(messages.len(), 2);
+        assert_eq!(messages[0].text, "Add cursor");
+        assert_eq!(messages[1].text, "Done");
+        assert_eq!(messages[1].tools[0].name, "Read");
+        assert_eq!(messages[1].tools[0].summary, "README.md");
+
+        let listed = discover_cursor_sessions(&HashMap::new(), &HashMap::new(), None, &dir, 10);
+        let ids: Vec<&str> = listed.iter().map(|item| item.id.as_str()).collect();
+        assert!(ids.contains(&format!("cursor:{id}").as_str()));
+        assert!(ids.contains(&format!("cursor:{only_id}").as_str()));
+        assert_eq!(ids.len(), 2);
+        let titled = listed.iter().find(|item| item.raw_id == id).unwrap();
+        assert_eq!(titled.title, "Fix the parser");
+        assert_eq!(titled.workdir, "/tmp/proj");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn claude_turn_keeps_short_updates_and_tool_output_in_order() {
         let path = std::env::temp_dir().join(format!("helm-claude-{}.jsonl", Uuid::new_v4()));
         let lines = [
@@ -3480,6 +4234,47 @@ mod codex_native_model_tests {
 
 #[cfg(test)]
 mod adopted_alias_tests {
+    #[test]
+    fn codex_lists_recent_real_chats_with_their_real_time() {
+        use super::*;
+        if Command::new("sqlite3").arg("--version").output().is_err() {
+            return;
+        }
+        let home = std::env::temp_dir().join(format!("moedeck-codex-{}", Uuid::new_v4()));
+        fs::create_dir_all(home.join(".codex")).unwrap();
+        let sql = "CREATE TABLE threads (id TEXT, name TEXT, title TEXT, first_user_message TEXT, preview TEXT, model TEXT, reasoning_effort TEXT, cwd TEXT, updated_at INTEGER, updated_at_ms INTEGER, source TEXT, archived INTEGER, originator TEXT);
+            INSERT INTO threads VALUES
+            ('new-chat', NULL, 'unnamed prompt', 'hi', 'hello', 'gpt', 'high', '/w', 2000, 2000123, 'vscode', 0, NULL),
+            ('old-chat', 'Named', 'x', 'hi', '', 'gpt', 'high', '/w', 1000, NULL, 'cli', 0, 'codex-tui'),
+            ('decks-own', NULL, 'mine', 'hi', '', 'gpt', 'high', '/w', 3000, 3000000, 'vscode', 0, 'moedeck'),
+            ('headless', NULL, 'job', 'hi', '', 'gpt', 'high', '/w', 3000, 3000000, 'exec', 0, NULL),
+            ('helper', NULL, 'sub', 'hi', '', 'gpt', 'high', '/w', 3000, 3000000, '{\"subagent\":1}', 0, NULL),
+            ('archived', NULL, 'gone', 'hi', '', 'gpt', 'high', '/w', 3000, 3000000, 'cli', 1, NULL),
+            ('unused', NULL, '', '', '', 'gpt', 'high', '/w', 3000, 3000000, 'cli', 0, NULL);";
+        let db = home.join(".codex").join("state_5.sqlite");
+        assert!(Command::new("sqlite3")
+            .arg(&db)
+            .arg(sql)
+            .status()
+            .unwrap()
+            .success());
+        let found = codex_threads(&home, None, 12);
+        let seen: Vec<_> = found
+            .iter()
+            .map(|t| (t.raw_id.as_str(), t.title.as_str(), t.updated_at))
+            .collect();
+        assert_eq!(
+            seen,
+            vec![
+                ("new-chat", "unnamed prompt", 2000123),
+                ("old-chat", "Named", 1000000)
+            ]
+        );
+        assert_eq!(codex_threads(&home, Some("headless"), 1).len(), 1);
+        assert!(codex_threads(&home, Some("x' OR '1'='1"), 1).is_empty());
+        let _ = fs::remove_dir_all(home);
+    }
+
     #[test]
     fn adopted_alias_is_account_scoped_and_never_hides_the_helm_thread() {
         let overlay:crate::models::StoredThreadOverlay=serde_json::from_value(serde_json::json!({"id":"helm:proof","harness":"codex","profile":"codex-2","native_session":"native-uuid","pinned":false,"created_at":0,"updated_at":0})).unwrap();

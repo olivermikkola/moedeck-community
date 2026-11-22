@@ -92,7 +92,7 @@ for (const engineName of (process.env.MOEDECK_BROWSERS || 'chromium,webkit').spl
     [binDir, alpha, beta, config].forEach(dir => fs.mkdirSync(dir, { recursive: true }));
     for (const name of ['codex', 'keel', 'claude']) fs.writeFileSync(path.join(binDir, name), harnessFixture, { mode: 0o755 });
     fs.writeFileSync(path.join(config, 'settings.json'), JSON.stringify({ harnesses: {
-      codex: { enabled: true, models: [{ id:'fixture-model', label:"Ada's model", default_effort:'low', efforts:['low','high'] }] }
+      codex: { enabled: true, models: [{ id:'fixture-model', label:"Oliver's model", default_effort:'low', efforts:['low','high'] }] }
     } }));
     const receipts = path.join(fixture, 'receipts.jsonl'), decisions = path.join(fixture, 'decisions.txt');
     const port = await unusedPort(), origin = `http://127.0.0.1:${port}`;
@@ -133,25 +133,41 @@ for (const engineName of (process.env.MOEDECK_BROWSERS || 'chromium,webkit').spl
       await page.getByRole('button',{name:'Close panel',exact:true}).tap();
       await page.waitForFunction(()=>!document.querySelector('#bottomSheet').classList.contains('open'));
     };
-    const newThread = async (harness,project) => {
-      await page.getByRole('button',{name:'New thread',exact:true}).tap();
-      await page.locator('#newHarnessSelect').selectOption(harness);
-      await page.locator('#projectSelect').selectOption(project);
-      await page.getByRole('button',{name:'Start conversation',exact:true}).tap();
-      await page.waitForFunction(({harness,project})=>state.detail?.summary.harness===harness&&state.detail.summary.workdir===project,{harness,project});
-      return page.evaluate(()=>state.activeId);
-    };
     const send = async text => {
       await page.locator('#composerInput').fill(text);
       await page.getByRole('button',{name:'Send',exact:true}).tap();
     };
+    // New chat is one tap: an empty draft with the composer focused. Harness
+    // comes from the composer pill, project from the header; the first send
+    // creates the conversation.
+    const openDraft = async (harness,project) => {
+      await page.getByRole('button',{name:'New thread',exact:true}).tap();
+      await page.waitForFunction(()=>state.draftNew&&!state.activeId&&document.activeElement?.id==='composerInput');
+      await page.locator('#harnessPillBtn').tap();
+      await page.locator(`#sheetContent .sheet-option[onclick*="'${harness}'"]`).tap();
+      await page.waitForFunction(()=>!document.querySelector('#bottomSheet').classList.contains('open'));
+      await page.locator('#headerTitleWrap').tap();
+      await page.locator('#projectSelect').selectOption(project);
+      await page.waitForFunction(p=>state.selectedWorkdir===p&&!document.querySelector('#bottomSheet').classList.contains('open'),project);
+      assert.equal(await page.locator('#convTitle').textContent(),'New chat');
+    };
+    const createdThread = async (harness,project) => {
+      await page.waitForFunction(({harness,project})=>state.detail?.summary.harness===harness&&state.detail.summary.workdir===project,{harness,project});
+      return page.evaluate(()=>state.activeId);
+    };
+    const newThread = async (harness,project,text) => {
+      await openDraft(harness,project);
+      await send(text);
+      return createdThread(harness,project);
+    };
     const idle = () => page.waitForFunction(()=>state.detail&&state.detail.summary.status!=='busy'&&!sendingTurn);
-    const first = await newThread('codex',alpha);
+    await openDraft('codex',alpha);
     assert.equal(await page.locator('#convSubtitle').textContent(),'Codex · alpha');
     await page.locator('#modelPillBtn').tap();
-    await page.getByRole('button',{name:"Ada's model",exact:false}).tap();
-    assert.match(await page.locator('#pillModelName').textContent(),/Ada's model/);
+    await page.getByRole('button',{name:"Oliver's model",exact:false}).tap();
+    assert.match(await page.locator('#pillModelName').textContent(),/Oliver's model/);
     await send('hello-phone');
+    const first = await createdThread('codex',alpha);
     await page.locator('#chatScroll').getByText('Harness received: hello-phone',{exact:true}).waitFor();
     await idle();
     const readReceipts = () => fs.readFileSync(receipts,'utf8').trim().split('\n').map(JSON.parse);
@@ -165,7 +181,8 @@ for (const engineName of (process.env.MOEDECK_BROWSERS || 'chromium,webkit').spl
     await page.locator('#chatScroll').getByText('Harness received: resume-phone',{exact:true}).waitFor();
     await idle();
     assert.equal(readReceipts()[1].resume,native);
-    const second = await newThread('codex',beta);
+    const second = await newThread('codex',beta,'second-thread');
+    await idle();
     await page.evaluate(()=>{state.previousId='missing-thread'});
     await page.locator('#quickFlipBtn').tap();
     await page.waitForFunction(id=>state.detail?.summary.id===id,first);
@@ -280,8 +297,7 @@ for (const engineName of (process.env.MOEDECK_BROWSERS || 'chromium,webkit').spl
     await page.waitForFunction(id=>!state.archived.has(id),first);
     assert.deepEqual(JSON.parse(fs.readFileSync(path.join(config,'archived.json'),'utf8')),[]);
 
-    const keel=await newThread('keel',alpha);
-    await send('approval-check');
+    const keel=await newThread('keel',alpha,'approval-check');
     const allow=()=>page.locator('#approvalDock').getByRole('button',{name:'✓ Allow',exact:true});
     await allow().waitFor();
     assert.equal(fs.existsSync(decisions),false);
@@ -300,24 +316,25 @@ for (const engineName of (process.env.MOEDECK_BROWSERS || 'chromium,webkit').spl
     assert.equal(fs.readFileSync(decisions,'utf8'),'allow\ndeny\n');
     assert.equal(await page.evaluate(()=>state.activeId),keel);
     // A turn reads in the order it happened, and a tool line opens to its output.
-    await newThread('claude',alpha);
-    await send('timeline-phone');
+    await newThread('claude',alpha,'timeline-phone');
     await page.locator('#chatScroll').getByText('The port is 7770.',{exact:true}).waitFor();
     await idle();
     const turn=page.locator('#chatScroll .t-turn').last();
-    assert.deepEqual(await turn.locator('.t-line').evaluateAll(ls=>ls.map(l=>l.firstElementChild.nextElementSibling.firstChild.textContent.trim())),
-      ['Checking the config.','Read','The port is 7770.']);
-    const tool=turn.locator('.t-tool');
-    assert.equal(await tool.locator('.t-out').isVisible(),false);
-    await tool.tap();
-    assert.equal(await tool.locator('.t-out').textContent(),'port = 7770');
-    assert.equal(await tool.locator('.t-out').isVisible(),true);
+    assert.deepEqual(await turn.locator('.t-text').evaluateAll(ls=>ls.map(l=>l.textContent.trim())),
+      ['Checking the config.','The port is 7770.']);
+    assert.equal(await turn.locator('.status-line').count(),0,'completed turns have no live status');
+    const steps=turn.locator('.steps');
+    assert.equal(await steps.locator('.step-raw').isVisible(),false);
+    await steps.locator(':scope > summary').tap();
+    await steps.locator('summary.step-name').tap();
+    assert.match(await steps.locator('.step-raw').textContent(),/port = 7770/);
+    assert.equal(await steps.locator('.step-raw').isVisible(),true);
     await page.screenshot({path:path.join(artifacts,`${engineName}-turn-timeline.png`)});
-    // A turn that has produced nothing yet shows only "Working…", no copy/speak row.
+    // A turn that has produced nothing yet says "Working", with no copy/speak row.
     assert.deepEqual(await page.evaluate(()=>{const d=document.createElement('div');
       d.innerHTML=renderTurn({role:'assistant',harness:'claude',text:'',streaming:true},0);
       const later=document.createElement('div');later.innerHTML=renderTurn({role:'assistant',harness:'claude',text:'done',streaming:true},0);
-      return [d.querySelectorAll('.t-working').length,d.querySelectorAll('.t-meta').length,later.querySelectorAll('.t-meta').length];}),[1,0,1]);
+      return [d.querySelectorAll('.status-line').length,d.querySelector('.status-line').textContent,d.querySelectorAll('.t-meta').length,later.querySelectorAll('.t-meta').length];}),[1,'Working',0,1]);
     // When the phone keyboard scrolls the page, the app follows the visible area.
     const kb=await page.evaluate(()=>{const vv=window.visualViewport;
       Object.defineProperty(vv,'height',{configurable:true,get:()=>500});Object.defineProperty(vv,'offsetTop',{configurable:true,get:()=>336});
@@ -391,6 +408,51 @@ for (const engineName of (process.env.MOEDECK_BROWSERS || 'chromium,webkit').spl
     await page.locator('#settingsBtn').tap();
     await page.getByRole('heading',{name:'Harnesses & accounts'}).waitFor();
     await closePanel();
+    // These controls must reach the authenticated API and expose rejection;
+    // a saved Cancelled label alone is not proof that the process stopped.
+    const sprintResponse=await context.request.post(origin+'/api/sprints',{data:{title:'Phone cancellation proof',harness:'codex',workdir:alpha,
+      steps:[{name:'Held turn',prompt:'wait-for-stop sprint-phone'},{name:'Must not run',prompt:'SPRINT_PHONE_NEXT_MUST_NOT_RUN'}]}});
+    assert.equal(sprintResponse.ok(),true);const sprint=await sprintResponse.json();
+    let sprintPid;
+    for(let n=0;;n++) {
+      const run=readReceipts().find(r=>r.prompt?.includes('wait-for-stop sprint-phone'));
+      if(run){sprintPid=run.pid;break}
+      assert(n<100,'sprint process did not start');await sleep(30);
+    }
+    await page.evaluate(async()=>{await fetchState();await openSprintSheet()});
+    await page.route('**/sprints/*/cancel',route=>route.fulfill({status:500,json:{error:'Fixture cancel rejected'}}));
+    await page.getByRole('button',{name:'Cancel sprint',exact:true}).tap();
+    await page.waitForFunction(()=>document.querySelector('#helmToast')?.textContent==='Fixture cancel rejected');
+    const liveSprint=await (await context.request.get(origin+'/api/sprints/'+sprint.id)).json();
+    assert.equal(liveSprint.status,'running');
+    assert.equal(fs.existsSync('/proc/'+sprintPid),true);
+    const toastContrast = async () => page.locator('#helmToast').evaluate(el=>{
+      const css=getComputedStyle(el);
+      const lum=color=>{const rgb=color.match(/[\d.]+/g).slice(0,3).map(Number).map(v=>{v/=255;return v<=0.04045?v/12.92:((v+.055)/1.055)**2.4});return rgb[0]*.2126+rgb[1]*.7152+rgb[2]*.0722};
+      const a=lum(css.color),b=lum(css.backgroundColor);return (Math.max(a,b)+.05)/(Math.min(a,b)+.05);
+    });
+    assert((await toastContrast())>=4.5,'failure text must be readable in light mode');
+    await page.screenshot({path:path.join(artifacts,`${engineName}-sprint-cancel-error.png`)});
+    await page.emulateMedia({colorScheme:'dark'});
+    assert((await toastContrast())>=4.5,'failure text must be readable in dark mode');
+    await page.screenshot({path:path.join(artifacts,`${engineName}-sprint-cancel-error-dark.png`)});
+    await page.emulateMedia({colorScheme:'light'});
+    await page.unroute('**/sprints/*/cancel');
+    await page.getByRole('button',{name:'Cancel sprint',exact:true}).tap();
+    await page.waitForFunction(id=>state.sprints.find(s=>s.id===id)?.status==='cancelled',sprint.id);
+    for(let n=0;fs.existsSync('/proc/'+sprintPid);n++){assert(n<100,'Cancel left its process alive');await sleep(30)}
+    await page.screenshot({path:path.join(artifacts,`${engineName}-sprint-cancelled.png`)});
+    await page.route('**/sprints/*',route=>route.request().method()==='DELETE'?route.fulfill({status:500,json:{error:'Fixture delete rejected'}}):route.continue());
+    await page.getByRole('button',{name:'Delete',exact:true}).tap();
+    await page.waitForFunction(()=>document.querySelector('#helmToast')?.textContent==='Fixture delete rejected');
+    assert.equal((await context.request.get(origin+'/api/sprints/'+sprint.id)).ok(),true);
+    await page.unroute('**/sprints/*');
+    await page.getByRole('button',{name:'Delete',exact:true}).tap();
+    await page.waitForFunction(id=>!state.sprints.some(s=>s.id===id),sprint.id);
+    assert.equal((await context.request.get(origin+'/api/sprints/'+sprint.id)).status(),404);
+    assert(!readReceipts().some(r=>r.prompt?.includes('SPRINT_PHONE_NEXT_MUST_NOT_RUN')));
+    await closePanel();
+    console.log(`${engineName}: rejected cancel/delete remain visible; Cancel kills the owned process; Delete removes the saved sprint`);
     assert.deepEqual(errors,[]);
     const bad=await context.request.post(origin+'/api/conversations',{data:'not-json',headers:{'Content-Type':'application/json'}});
     assert.equal(bad.status(),400);
