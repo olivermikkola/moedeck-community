@@ -250,11 +250,7 @@ impl ApprovalManager {
         }
 
         // In Standard mode, medium non-shell operations (regular file edits inside workdir) pass
-        if mode == SafetyMode::Standard && risk == RiskLevel::Medium && !is_exec_tool(tool_name) {
-            return true;
-        }
-
-        false
+        mode == SafetyMode::Standard && risk == RiskLevel::Medium && !is_exec_tool(tool_name)
     }
 
     /// Registers a pending approval request and waits for mobile user decision or timeout.
