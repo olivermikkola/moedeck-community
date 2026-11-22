@@ -97,6 +97,23 @@ fn default_auto_triage() -> bool {
     false
 }
 
+impl GoalItem {
+    /// What the cockpit's background-work list actually renders: identity,
+    /// state and a task count. Bootstrap is polled every 0.7–2 s, so it must
+    /// not ship full subgoal histories — a triage storm once grew this
+    /// payload to 8 MB and every poll re-sent it to the phone.
+    pub fn summary(&self) -> serde_json::Value {
+        serde_json::json!({
+            "id": self.id,
+            "title": self.title,
+            "status": self.status,
+            "schedule": self.schedule,
+            "subgoal_count": self.subgoals.len(),
+            "next_tick_at": self.next_tick_at,
+        })
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateGoalRequest {
     pub title: String,
@@ -1533,6 +1550,23 @@ mod tests {
         assert_eq!(req.subgoals[1].harness, "codex");
         assert_eq!(req.subgoals[2].harness, "agy");
         assert_eq!(req.schedule, Some("15m".to_string()));
+    }
+
+    #[tokio::test]
+    async fn goal_summary_counts_tasks_without_shipping_histories() {
+        let mgr = GoalManager::new();
+        let req = create_vm_lab_assessment_goal("/tmp/vm-lab-summary", None);
+        let goal = mgr.create_goal(req).await.unwrap();
+        let summary = goal.summary();
+        assert_eq!(summary["id"], goal.id);
+        assert_eq!(summary["subgoal_count"], 3);
+        assert!(summary["status"].is_string());
+        assert!(
+            summary.get("subgoals").is_none(),
+            "bootstrap must not carry subgoal bodies"
+        );
+        assert!(summary.get("description").is_none());
+        mgr.delete_goal(&goal.id).await.unwrap();
     }
 
     #[tokio::test]

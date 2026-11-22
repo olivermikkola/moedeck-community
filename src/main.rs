@@ -839,7 +839,13 @@ async fn handle_request(
             let safety_mode = runner.approvals.get_safety_mode().await;
             let swarm_sessions = swarm_mgr.list_sessions().await;
             let sprints = sprint_mgr.list_sprints().await;
-            let goals = goal_mgr.list_goals().await;
+            // Summaries only: full subgoal histories stay on /api/goals/{id}.
+            let goals: Vec<_> = goal_mgr
+                .list_goals()
+                .await
+                .iter()
+                .map(|g| g.summary())
+                .collect();
             Ok(json_response(
                 StatusCode::OK,
                 &json!({

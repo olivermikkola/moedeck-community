@@ -153,6 +153,13 @@ for(const engine of (process.env.MOEDECK_BROWSERS||'chromium,webkit').split(',')
     assert.match(await page.locator('#runningTaskText').textContent(),/Read-only OpenCode history/);
     const createdGoal=await context.request.post(origin+'/api/goals',{headers,data:{title:'Scheduled proof',workdir:project,schedule:'1h',subgoals:[{title:'Future work',prompt:'Not executed by this test',harness:'opencode'}]}});
     assert.equal(createdGoal.ok(),true);const scheduled=await createdGoal.json();
+    // Bootstrap is polled every 0.7–2 s: it must carry a goal summary, not the
+    // subgoal bodies (a triage storm once grew that payload to 8 MB per poll).
+    const bootRaw=await (await context.request.get(origin+'/api/bootstrap')).text();
+    assert.equal(bootRaw.includes('Not executed by this test'),false,'bootstrap must not ship subgoal prompts');
+    const bootGoal=JSON.parse(bootRaw).goals.find(g=>g.id===scheduled.id);
+    assert.equal(bootGoal.subgoal_count,1);
+    assert.equal(bootGoal.subgoals,undefined);
     await page.evaluate(()=>fetchState());
     await page.getByRole('button',{name:'Menu',exact:true}).tap();
     await page.locator('#backgroundWorkBtn').tap();

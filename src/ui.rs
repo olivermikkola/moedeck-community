@@ -4015,7 +4015,7 @@ pub const INDEX_HTML: &str = r##"<!DOCTYPE html>
         }).join('') || '<p class="settings-help">No chat turns running.</p>'}
         ${state.goals.length ? '<p class="settings-help">Goals can schedule new turns. Pausing stops future scheduling; use Stop for a turn already running.</p>' : ''}
         ${state.goals.map(g => `<div class="sheet-option" style="cursor:default;gap:12px">
-          <div style="min-width:0"><div>${escapeHtml(g.title)}</div><div class="settings-help">${escapeHtml(g.status)} · ${g.subgoals.length} task${g.subgoals.length === 1 ? '' : 's'}</div></div>
+          <div style="min-width:0"><div>${escapeHtml(g.title)}</div><div class="settings-help">${escapeHtml(g.status)} · ${g.subgoal_count} task${g.subgoal_count === 1 ? '' : 's'}</div></div>
           ${['running','queued'].includes(g.status) ? `<button class="filter-chip" onclick="pauseScheduledGoal('${escapeAttr(g.id)}', this)">Pause scheduling</button>` : ''}
         </div>`).join('')}
         ${(state.sprints || []).map(s => `<div class="sheet-option" style="cursor:default;gap:12px">
